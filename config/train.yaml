@@ -1,0 +1,29 @@
+wandb_id: null
+
+loader_kwargs:
+  pin_memory: true
+  batch_size: 64
+  num_workers: 4
+  drop_last: true
+
+trainer_kwargs:
+  patience: 100
+  max_epochs: 1000
+  grad_clip: 10
+  optim_dict:
+    lookahead: false
+    name: adam
+    lr: 1.0e-3
+  sched_dict:
+    # name: none
+    name: cyclicwithwarmup
+    div_factor: 20
+    epochs_per_cycle: 15
+    final_div_factor: 20
+
+  chkp_every: 1
+  quick_mode: false
+  tqdm_quiet: false
+  vis_every: 1
+  resume: false
+

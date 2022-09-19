@@ -1,0 +1,26 @@
+base_kwargs:
+  device: gpu
+  name: CNNClassifierTest
+  save_dir: /home/matthew/Documents/saved_networks
+  net_type: cnn
+
+label_smoothing: 0.1
+
+cnn_kwargs:
+  min_size: 4
+  start_channels: 16
+  max_channels: 32
+  attn_after: 3
+  resnet_kwargs:
+    dims: 2
+    act: lrlu
+    drp: 0.3
+    nrm_groups: 4
+  dense_kwargs:
+    num_blocks: 1
+    hddn_dim: 32
+    drp: 0.3
+    nrm: layer
+  attn_kwargs:
+    num_heads: 1
+    nrm_groups: 4

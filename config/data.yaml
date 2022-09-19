@@ -1,0 +1,9 @@
+name: celeba
+trans_kwargs:
+  to_tens: True
+  resize: 0
+  rand_rotate: 10
+  rand_crop: 0
+  center_crop: 128
+  augment: False
+  shift_scale: !!python/tuple [0.5, 0.5] #127.5

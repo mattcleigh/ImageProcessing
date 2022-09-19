@@ -1,0 +1,6 @@
+*.pyc
+*.vscode
+*.out
+wandb/
+data/
+*.sh

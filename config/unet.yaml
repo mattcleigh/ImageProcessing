@@ -1,0 +1,19 @@
+base_kwargs:
+  device: gpu
+  name: UNetUpscaler
+  save_dir: /home/matthew/Documents/saved_networks
+  net_type: unet
+
+unet_kwargs:
+  min_size: 4
+  attn_after: 3
+  start_channels: 16
+  max_channels: 128
+  resnet_kwargs:
+    dims: 2
+    act: lrlu
+    drp: 0.1
+    nrm_groups: 1
+  attn_kwargs:
+    num_heads: 1
+    nrm_groups: 1
