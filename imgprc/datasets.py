@@ -15,6 +15,7 @@ def compose_transforms(
     resize: int = 64,
     rand_rotate: int = 0,
     rand_crop: int = 0,
+    rand_flip: bool = True,
     center_crop: int = 0,
     augment: bool = False,
     shift_scale: tuple = (0, 1),
@@ -38,6 +39,8 @@ def compose_transforms(
         fwd_trans.append(tv.transforms.RandomCrop(rand_crop))
     if center_crop:
         fwd_trans.append(tv.transforms.CenterCrop(center_crop))
+    if rand_flip:
+        fwd_trans.append(tv.transforms.RandomHorizontalFlip(p=0.5))
     if shift_scale != (0, 1):
         fwd_trans.append(tv.transforms.Normalize(*shift_scale))
         bck_trans.append(

@@ -1,0 +1,20 @@
+wandb_id: null
+
+loader_kwargs:
+  pin_memory: true
+  batch_size: 64
+  num_workers: 4
+  drop_last: true
+
+trainer_kwargs:
+  patience: 10000
+  max_epochs: 10000
+  grad_clip: 0
+  optim_dict: {}
+  sched_dict: {}
+  chkp_every: 1
+  quick_mode: false
+  tqdm_quiet: false
+  vis_every: 1
+  resume: false
+
