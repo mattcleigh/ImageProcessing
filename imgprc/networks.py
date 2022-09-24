@@ -291,21 +291,20 @@ class UNetSRGAN(MyNetBase):
         """Function called by trainer"""
 
         ## Unpack the sample tuple
-        images, ctxt = sample
+        real_images, ctxt = sample
 
         ## Get the low quality input images for the network
-        in_images = avg_pool2d(images, 4, 4)
-        in_images = interpolate(in_images, scale_factor=4)
+        compressed_images = interpolate(avg_pool2d(real_images, 4, 4), scale_factor=4)
 
         #################
         ## G optim step
         #################
 
         ## Get the upscaled images, pass through dist and calc loss
-        out_images = self.unet(in_images, ctxt)
+        upscaled_images = self.unet(compressed_images, ctxt)
         with GradsOff(self.disc):
-            disc_outs = self.disc(out_images, ctxt)
-        rec_loss = self.rec_loss_fn(out_images, in_images)
+            disc_outs = self.disc(upscaled_images, ctxt)
+        rec_loss = self.rec_loss_fn(upscaled_images, real_images)
         gan_loss = self.gan_loss_fn(disc_outs, True)  ## Gen uses wrong labels
         gen_loss = rec_loss + gan_loss
 
@@ -322,8 +321,8 @@ class UNetSRGAN(MyNetBase):
         #################
 
         ## Calculate the loss for the discriminator
-        fake_loss = self.gan_loss_fn(self.disc(out_images.detach(), ctxt), False)
-        real_loss = self.gan_loss_fn(self.disc(images, ctxt), True)
+        fake_loss = self.gan_loss_fn(self.disc(upscaled_images.detach(), ctxt), False)
+        real_loss = self.gan_loss_fn(self.disc(real_images, ctxt), True)
         disc_loss = (fake_loss + real_loss) / 2
 
         ## Perform the step for the discriminator
@@ -372,9 +371,10 @@ class UNetSRGAN(MyNetBase):
 
         ## Get the low quality 32x32 input images for the network
         in_images = avg_pool2d(images, 4, 4)
+        in_images = interpolate(in_images, scale_factor=4)
 
         ## Get the network outputs 128x128
-        outputs = self.forward(in_images.to(self.device), ctxt.to(self.device))
+        outputs = self.unet(in_images.to(self.device), ctxt.to(self.device))
 
         ## Convert to numpy
         inputs = to_np(in_images)

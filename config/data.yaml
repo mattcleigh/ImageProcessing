@@ -1,5 +1,5 @@
 name: celeba
-path: /home/users/l/leighm/scratch/Data/data
+path: /home/matthew/Documents/data
 trans_kwargs:
   to_tens: True
   resize: 0

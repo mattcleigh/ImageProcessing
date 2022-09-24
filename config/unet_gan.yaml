@@ -1,7 +1,7 @@
 base_kwargs:
   device: gpu
-  name: UNetGANUpscaler2
-  save_dir: /home/users/l/leighm/scratch/Saved_Networks/ImageProcessing
+  name: UNetGANUpscaler
+  save_dir: /home/matthew/Documents/saved_networks
   net_type: unet-gan
 
 gan_mode: lsgan
@@ -21,7 +21,7 @@ unet_kwargs:
     nrm_groups: 4
 
 disc_kwargs:
-  outp_size: 64
+  outp_size: 32
   start_channels: 8
   max_channels: 32
   resnet_kwargs:

@@ -1,6 +1,6 @@
 base_kwargs:
   device: gpu
-  name: UNetUpscaler
+  name: UNetUpscaler2
   save_dir: /home/matthew/Documents/saved_networks
   net_type: unet
 

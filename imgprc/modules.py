@@ -107,6 +107,7 @@ class PatchDiscriminator(nn.Module):
         ## The final output, must have last layer be 1 part of the UNet
         final_kwargs = deepcopy(resnet_kwargs)
         final_kwargs.nrm_groups = 1
+        final_kwargs.drp = 0 # No dropout! These are the outputs!
         self.final_block = ResNetBlock(
             inpt_channels=out_c,
             ctxt_dim=ctxt_dim,

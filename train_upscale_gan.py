@@ -2,8 +2,6 @@
 Main callable script to train the flavour tagger
 """
 
-from pathlib import Path
-
 from torch.utils.data import DataLoader
 
 from mattstools.trainer import Trainer
@@ -11,7 +9,6 @@ from mattstools.trainer import Trainer
 from imgprc.utils import get_configs
 from imgprc.datasets import ImageDataset
 from imgprc.networks import UNetSRGAN
-
 
 import wandb
 
