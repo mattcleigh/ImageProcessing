@@ -4,6 +4,8 @@ base_kwargs:
   save_dir: /home/users/l/leighm/scratch/Saved_Networks/ImageProcessing
   net_type: unet-gan
 
+gan_mode: lsgan
+
 unet_kwargs:
   min_size: 4
   attn_after: 3

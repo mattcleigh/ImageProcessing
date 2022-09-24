@@ -221,6 +221,7 @@ class UNetSRGAN(MyNetBase):
         *,
         base_kwargs: dict,
         steps_per_epoch: int = 0,
+        gan_mode: str = "vanilla",
         grad_clip: int = 10,
         unet_kwargs: dict = None,
         disc_kwargs: dict = None,
@@ -232,6 +233,7 @@ class UNetSRGAN(MyNetBase):
             steps_per_epoch: Needed as the model must configure its own scheduler
             grad_clip: Needed as the model must perform its own loss
         kwargs:
+            gan_mode: loss type to use for the GAN
             unet_kwargs: Keyword arguments for the UNet network
             disc_kwargs: Keyword arguments for the CNN discriminator network
             optim_dict: Keyword arguments for the optimisers
@@ -276,7 +278,7 @@ class UNetSRGAN(MyNetBase):
 
         ## The loss function for reconstruction
         self.rec_loss_fn = nn.L1Loss()
-        self.gan_loss_fn = GANLoss()
+        self.gan_loss_fn = GANLoss(gan_mode)
         self._setup()
 
     def _step(

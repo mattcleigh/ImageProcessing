@@ -21,7 +21,7 @@ class GANLoss(nn.Module):
     ):
         """
         args:
-            gan_mode: Type of GAN loss, vanilla (nst), lsgan, and wgangp.
+            gan_mode: Type of GAN loss, vanilla (nst), lsgan, and wgan.
             real_label: The class label for a real image
             fake_label: The class label for a real image
         LSGAN needs no sigmoid. vanilla GANs will handle it with BCEWithLogitsLoss.
@@ -38,7 +38,7 @@ class GANLoss(nn.Module):
             self.loss = nn.BCEWithLogitsLoss()
         elif gan_mode == "lsgan":
             self.loss = nn.MSELoss()
-        elif gan_mode in "wgangp":  ## Wasertein gans have no loss, just push outputs
+        elif gan_mode in "wgan":  ## Wasertein gans have no loss, just push outputs
             self.loss = None
         else:
             raise NotImplementedError(f"Unrecognised gan_mode: {gan_mode}")
@@ -68,7 +68,7 @@ class GANLoss(nn.Module):
         if self.gan_mode in ["lsgan", "vanilla"]:
             target_tensor = self.get_target_tensor(prediction, target_is_real)
             loss = self.loss(prediction, target_tensor)
-        elif self.gan_mode == "wgangp":
+        elif self.gan_mode == "wgan":
             if target_is_real:
                 loss = -prediction.mean()
             else:
