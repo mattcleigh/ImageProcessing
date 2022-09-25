@@ -1,39 +1,39 @@
 base_kwargs:
   device: gpu
   name: UNetGANUpscaler
-  save_dir: /home/matthew/Documents/saved_networks
+  save_dir: /home/users/l/leighm/scratch/Saved_Networks/ImageProcessing
   net_type: unet-gan
 
+upscale_factor: 8
 gan_mode: lsgan
+grad_clip: 10
+optim_dict:
+  name: adam
+  lr: 5.0e-4
+sched_dict:
+  name: warmup
+  num_steps: 1024
 
 unet_kwargs:
   min_size: 4
   attn_after: 3
-  start_channels: 16
+  start_channels: 32
   max_channels: 128
   resnet_kwargs:
-    dims: 2
     act: lrlu
     drp: 0.1
-    nrm_groups: 4
+    nrm_groups: 32
   attn_kwargs:
     num_heads: 4
-    nrm_groups: 4
+    nrm_groups: 32
 
 disc_kwargs:
-  outp_size: 32
-  start_channels: 8
-  max_channels: 32
+  outp_size: 16
+  start_channels: 32
+  max_channels: 64
   resnet_kwargs:
-    dims: 2
     act: lrlu
     drp: 0.1
-    nrm_groups: 8
+    nrm_groups: 32
 
-optim_dict:
-  name: adam
-  lr: 5.0e-4
 
-sched_dict:
-  name: warmup
-  num_steps: 512

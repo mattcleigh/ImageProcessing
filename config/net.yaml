@@ -1,7 +1,7 @@
 base_kwargs:
   device: gpu
   name: CNNClassifierTest
-  save_dir: /home/matthew/Documents/saved_networks
+  save_dir: /home/users/l/leighm/scratch/Saved_Networks/ImageProcessing
   net_type: cnn
 
 label_smoothing: 0.1

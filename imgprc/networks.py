@@ -221,6 +221,7 @@ class UNetSRGAN(MyNetBase):
         *,
         base_kwargs: dict,
         steps_per_epoch: int = 0,
+        upscale_factor: int = 4,
         gan_mode: str = "vanilla",
         grad_clip: int = 10,
         unet_kwargs: dict = None,
@@ -229,10 +230,10 @@ class UNetSRGAN(MyNetBase):
         sched_dict: dict = None,
     ) -> None:
         """
-        args:
+        kwargs:
             steps_per_epoch: Needed as the model must configure its own scheduler
             grad_clip: Needed as the model must perform its own loss
-        kwargs:
+            upscale_factor: Amount by which to upscale the image
             gan_mode: loss type to use for the GAN
             unet_kwargs: Keyword arguments for the UNet network
             disc_kwargs: Keyword arguments for the CNN discriminator network
@@ -246,6 +247,9 @@ class UNetSRGAN(MyNetBase):
         disc_kwargs = disc_kwargs or {}
         optim_dict = optim_dict or {}
         sched_dict = sched_dict or {}
+
+        ## Attributes
+        self.upscale_factor = upscale_factor
 
         ## Initialise the generator model making up this network
         self.unet = UNet(
@@ -294,7 +298,10 @@ class UNetSRGAN(MyNetBase):
         real_images, ctxt = sample
 
         ## Get the low quality input images for the network
-        compressed_images = interpolate(avg_pool2d(real_images, 4, 4), scale_factor=4)
+        compressed_images = interpolate(
+            avg_pool2d(real_images, self.upscale_factor, self.upscale_factor),
+            scale_factor=self.upscale_factor,
+        )
 
         #################
         ## G optim step
@@ -352,7 +359,7 @@ class UNetSRGAN(MyNetBase):
     def forward(self, images: T.Tensor, ctxt: T.Tensor = None):
         """Takes in a 32x32 image and upscales it to 128x128"""
         ## Use nearest neibour upscaling for inputs, then pass through network
-        images = interpolate(images, scale_factor=4)
+        images = interpolate(images, scale_factor=self.upscale_factor)
         return self.unet(images, ctxt)
 
     def visualise(self, loader, path, flag, epochs):
@@ -370,22 +377,23 @@ class UNetSRGAN(MyNetBase):
         images, ctxt = next(iter(loader))
 
         ## Get the low quality 32x32 input images for the network
-        in_images = avg_pool2d(images, 4, 4)
-        in_images = interpolate(in_images, scale_factor=4)
+        compressed_images = interpolate(
+            avg_pool2d(images, self.upscale_factor, self.upscale_factor),
+            scale_factor=self.upscale_factor,
+        )
 
         ## Get the network outputs 128x128
-        outputs = self.unet(in_images.to(self.device), ctxt.to(self.device))
+        outputs = self.unet(compressed_images.to(self.device), ctxt.to(self.device))
 
         ## Convert to numpy
-        inputs = to_np(in_images)
+        inputs = to_np(compressed_images)
         outputs = to_np(outputs)
         truth = to_np(images)
 
         ## Add all data to the table
         for idx, (i, o, t) in enumerate(zip(inputs, outputs, truth)):
-            img_id = str(idx) + "_" + str(epochs)
             test_table.add_data(
-                img_id,
+                idx,
                 wandb.Image(np.transpose(i, (1, 2, 0))),
                 wandb.Image(np.transpose(o, (1, 2, 0))),
                 wandb.Image(np.transpose(t, (1, 2, 0))),
