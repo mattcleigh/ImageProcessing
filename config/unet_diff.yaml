@@ -10,9 +10,9 @@ time_embedding_dim: 8
 upscale_factor: 8
 unet_kwargs:
   min_size: 4
-  attn_after: 3
-  start_channels: 16
-  max_channels: 128
+  attn_after: 18
+  start_channels: 8
+  max_channels: 32
   resnet_kwargs:
     dims: 2
     act: lrlu
