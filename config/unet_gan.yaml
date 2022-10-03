@@ -6,9 +6,9 @@ base_kwargs:
 
 unet_kwargs:
   min_size: 4
-  attn_after: 3
+  attn_after: 5
   start_channels: 16
-  max_channels: 64
+  max_channels: 16
   resnet_kwargs:
     dims: 2
     act: lrlu
@@ -20,9 +20,9 @@ unet_kwargs:
 
 disc_kwargs:
   min_size: 8
-  attn_after: 3
+  attn_after: 5
   start_channels: 16
-  max_channels: 64
+  max_channels: 16
   resnet_kwargs:
     dims: 2
     act: lrlu
