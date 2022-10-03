@@ -321,7 +321,8 @@ class UNetSRGAN(MyNetBase):
             gen_loss.backward()
             nn.utils.clip_grad_norm_(self.unet.parameters(), self.grad_clip)
             self.g_opt.step()
-            self.g_sched.step()
+            if self.g_sched is not None:
+                self.g_sched.step()
 
         #################
         ## D optim step
@@ -338,7 +339,8 @@ class UNetSRGAN(MyNetBase):
             disc_loss.backward()
             nn.utils.clip_grad_norm_(self.disc.parameters(), self.grad_clip)
             self.d_opt.step()
-            self.d_sched.step()
+            if self.d_sched is not None:
+                self.d_sched.step()
 
         ## Return the loss names for plotting
         return {

@@ -9,10 +9,9 @@ gan_mode: lsgan
 grad_clip: 10
 optim_dict:
   name: adam
-  lr: 5.0e-4
+  lr: 1.0e-4
 sched_dict:
-  name: warmup
-  num_steps: 1024
+  name: none
 
 unet_kwargs:
   min_size: 4
