@@ -52,16 +52,18 @@ def compose_transforms(
     return tv.transforms.Compose(fwd_trans), tv.transforms.Compose(bck_trans)
 
 
-def load_image_dataset(name: str, transforms: tv.transforms, is_train: bool = True):
+def load_image_dataset(
+    name: str, transforms: tv.transforms, is_train: bool = True, path: str = "data"
+):
     """Returns an image train and validation dataset after applying some transforms"""
 
     if name == "cifar10":
         dataset = tv.datasets.CIFAR10(
-            root="data", train=is_train, download=True, transform=transforms
+            root=path, train=is_train, download=True, transform=transforms
         )
     elif name == "mnist":
         dataset = tv.datasets.MNIST(
-            root="data", train=is_train, download=True, transform=transforms
+            root=path, train=is_train, download=True, transform=transforms
         )
     elif name == "imagenet":
         dataset = tv.datasets.ImageNet(
@@ -72,7 +74,7 @@ def load_image_dataset(name: str, transforms: tv.transforms, is_train: bool = Tr
         )
     elif name == "celeba":
         dataset = tv.datasets.CelebA(
-            root="data",
+            root=path,
             split="train" if is_train else "valid",
             download=True,
             transform=transforms,
@@ -86,12 +88,14 @@ def load_image_dataset(name: str, transforms: tv.transforms, is_train: bool = Tr
 class ClassificationImageDataset(Dataset):
     """A wrapper for the image datasets so certain attributes can be saved"""
 
-    def __init__(self, is_train: bool, name: str, trans_kwargs: dict) -> None:
+    def __init__(
+        self, is_train: bool, name: str, path: str, trans_kwargs: dict
+    ) -> None:
         super().__init__()
         self.name = name
         self.is_train = is_train
         self.fwd_trans, self.bck_trans = compose_transforms(**trans_kwargs)
-        self.dataset = load_image_dataset(name, self.fwd_trans, is_train)
+        self.dataset = load_image_dataset(name, self.fwd_trans, is_train, path)
 
     def __getitem__(self, idx) -> tuple:
         image, label = self.dataset[idx]
@@ -111,12 +115,14 @@ class ClassificationImageDataset(Dataset):
 class ImageDataset(Dataset):
     """A wrapper for the image datasets so certain attributes can be saved"""
 
-    def __init__(self, is_train: bool, name: str, trans_kwargs: dict) -> None:
+    def __init__(
+        self, is_train: bool, name: str, path: str, trans_kwargs: dict
+    ) -> None:
         super().__init__()
         self.name = name
         self.is_train = is_train
         self.fwd_trans, self.bck_trans = compose_transforms(**trans_kwargs)
-        self.dataset = load_image_dataset(name, self.fwd_trans, is_train)
+        self.dataset = load_image_dataset(name, self.fwd_trans, is_train, path)
 
     def __getitem__(self, idx) -> tuple:
         image = self.dataset[idx][0]

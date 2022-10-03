@@ -18,10 +18,12 @@ from mattstools.torch_utils import get_optim, get_sched, GradsOff
 
 import wandb
 
+from imgprc.modules import PatchDiscriminator
+from imgprc.loss import GANLoss
+
 
 class CNNClassifier(MyNetBase):
-    """Classifier with unet options
-    """
+    """Classifier with unet options"""
 
     def __init__(
         self, *, base_kwargs: dict, label_smoothing: float = 0, cnn_kwargs: dict = None
@@ -116,8 +118,7 @@ class CNNClassifier(MyNetBase):
 
 
 class UNetSuperResolution(MyNetBase):
-    """A image to image model for doubling the resolution of an image
-    """
+    """A image to image model for doubling the resolution of an image"""
 
     def __init__(self, *, base_kwargs: dict, unet_kwargs: dict = None) -> None:
         """
@@ -211,24 +212,29 @@ class UNetSRGAN(MyNetBase):
     """A image to image model for quadupling the resolution of an image, with an
     additional adversay.
 
-    GANs in mattstools also therefore need to handle their own optimisers using
+    GANs in mattstools need to handle their own optimisers using
     train and validation steps.
     """
 
-    def __init__(self, *,
+    def __init__(
+        self,
+        *,
         base_kwargs: dict,
         steps_per_epoch: int = 0,
+        upscale_factor: int = 4,
+        gan_mode: str = "vanilla",
         grad_clip: int = 10,
         unet_kwargs: dict = None,
         disc_kwargs: dict = None,
         optim_dict: dict = None,
         sched_dict: dict = None,
-        ) -> None:
+    ) -> None:
         """
-        args:
+        kwargs:
             steps_per_epoch: Needed as the model must configure its own scheduler
             grad_clip: Needed as the model must perform its own loss
-        kwargs:
+            upscale_factor: Amount by which to upscale the image
+            gan_mode: loss type to use for the GAN
             unet_kwargs: Keyword arguments for the UNet network
             disc_kwargs: Keyword arguments for the CNN discriminator network
             optim_dict: Keyword arguments for the optimisers
@@ -242,6 +248,9 @@ class UNetSRGAN(MyNetBase):
         optim_dict = optim_dict or {}
         sched_dict = sched_dict or {}
 
+        ## Attributes
+        self.upscale_factor = upscale_factor
+
         ## Initialise the generator model making up this network
         self.unet = UNet(
             inpt_size=self.inpt_dim[1:],
@@ -252,10 +261,9 @@ class UNetSRGAN(MyNetBase):
         )
 
         ## Initialise the discriminator model making up this network
-        self.disc = DoublingConvNet(
+        self.disc = PatchDiscriminator(
             inpt_size=self.inpt_dim[1:],
             inpt_channels=self.inpt_dim[0],
-            outp_dim=1,
             ctxt_dim=self.ctxt_dim,
             **disc_kwargs,
         )
@@ -273,30 +281,38 @@ class UNetSRGAN(MyNetBase):
         self.loss_names = ["total", "reconstruction", "generator", "discriminator"]
 
         ## The loss function for reconstruction
-        self.rec_loss_fn = nn.MSELoss()
-        self.gan_loss_fn = nn.BCEWithLogitsLoss()
+        self.rec_loss_fn = nn.L1Loss()
+        self.gan_loss_fn = GANLoss(gan_mode)
         self._setup()
 
-    def _step(self, is_train: bool, sample: tuple, _batch_idx: int = None, _epoch_num: int = None):
+    def _step(
+        self,
+        is_train: bool,
+        sample: tuple,
+        _batch_idx: int = None,
+        _epoch_num: int = None,
+    ):
         """Function called by trainer"""
 
         ## Unpack the sample tuple
-        images, ctxt = sample
+        real_images, ctxt = sample
 
         ## Get the low quality input images for the network
-        in_images = avg_pool2d(images, 4, 4)
-        in_images = interpolate(in_images, scale_factor=4)
+        compressed_images = interpolate(
+            avg_pool2d(real_images, self.upscale_factor, self.upscale_factor),
+            scale_factor=self.upscale_factor,
+        )
 
-        ## Ones and zeros to use as the real and fake labels in the gan loss function
-        ones = T.ones((images.shape[0], 1), device=self.device)
-        zeros = T.zeros((images.shape[0], 1), device=self.device)
+        #################
+        ## G optim step
+        #################
 
         ## Get the upscaled images, pass through dist and calc loss
-        out_images = self.unet(in_images, ctxt)
+        upscaled_images = self.unet(compressed_images, ctxt)
         with GradsOff(self.disc):
-            disc_outs = self.disc(out_images, ctxt)
-        rec_loss = self.rec_loss_fn(out_images, in_images)
-        gan_loss = self.gan_loss_fn(disc_outs, ones)
+            disc_outs = self.disc(upscaled_images, ctxt)
+        rec_loss = self.rec_loss_fn(upscaled_images, real_images)
+        gan_loss = self.gan_loss_fn(disc_outs, True)  ## Gen uses wrong labels
         gen_loss = rec_loss + gan_loss
 
         ## Perform the step for the generator
@@ -305,11 +321,16 @@ class UNetSRGAN(MyNetBase):
             gen_loss.backward()
             nn.utils.clip_grad_norm_(self.unet.parameters(), self.grad_clip)
             self.g_opt.step()
-            self.g_sched.step()
+            if self.g_sched is not None:
+                self.g_sched.step()
+
+        #################
+        ## D optim step
+        #################
 
         ## Calculate the loss for the discriminator
-        fake_loss = self.gan_loss_fn(self.disc(out_images.detach(), ctxt), zeros)
-        real_loss = self.gan_loss_fn(self.disc(images, ctxt), ones)
+        fake_loss = self.gan_loss_fn(self.disc(upscaled_images.detach(), ctxt), False)
+        real_loss = self.gan_loss_fn(self.disc(real_images, ctxt), True)
         disc_loss = (fake_loss + real_loss) / 2
 
         ## Perform the step for the discriminator
@@ -318,14 +339,15 @@ class UNetSRGAN(MyNetBase):
             disc_loss.backward()
             nn.utils.clip_grad_norm_(self.disc.parameters(), self.grad_clip)
             self.d_opt.step()
-            self.d_sched.step()
+            if self.d_sched is not None:
+                self.d_sched.step()
 
         ## Return the loss names for plotting
         return {
             "total": gen_loss,
             "reconstruction": rec_loss,
             "generator": gan_loss,
-            "discriminator": disc_loss
+            "discriminator": disc_loss,
         }
 
     def train_step(self, *args, **kwargs):
@@ -339,7 +361,7 @@ class UNetSRGAN(MyNetBase):
     def forward(self, images: T.Tensor, ctxt: T.Tensor = None):
         """Takes in a 32x32 image and upscales it to 128x128"""
         ## Use nearest neibour upscaling for inputs, then pass through network
-        images = interpolate(images, scale_factor=4)
+        images = interpolate(images, scale_factor=self.upscale_factor)
         return self.unet(images, ctxt)
 
     def visualise(self, loader, path, flag, epochs):
@@ -356,22 +378,24 @@ class UNetSRGAN(MyNetBase):
         ## Just take the first batch
         images, ctxt = next(iter(loader))
 
-        ## Get the low quality input images for the network
-        in_images = avg_pool2d(images, 4, 4)
+        ## Get the low quality 32x32 input images for the network
+        compressed_images = interpolate(
+            avg_pool2d(images, self.upscale_factor, self.upscale_factor),
+            scale_factor=self.upscale_factor,
+        )
 
-        ## Get the network outputs
-        outputs = self.unet(in_images.to(self.device), ctxt.to(self.device))
+        ## Get the network outputs 128x128
+        outputs = self.unet(compressed_images.to(self.device), ctxt.to(self.device))
 
         ## Convert to numpy
-        inputs = to_np(in_images)
+        inputs = to_np(compressed_images)
         outputs = to_np(outputs)
         truth = to_np(images)
 
         ## Add all data to the table
         for idx, (i, o, t) in enumerate(zip(inputs, outputs, truth)):
-            img_id = str(idx) + "_" + str(epochs)
             test_table.add_data(
-                img_id,
+                idx,
                 wandb.Image(np.transpose(i, (1, 2, 0))),
                 wandb.Image(np.transpose(o, (1, 2, 0))),
                 wandb.Image(np.transpose(t, (1, 2, 0))),

@@ -3,7 +3,7 @@ wandb_id: null
 loader_kwargs:
   pin_memory: true
   batch_size: 64
-  num_workers: 4
+  num_workers: 6
   drop_last: true
 
 trainer_kwargs:

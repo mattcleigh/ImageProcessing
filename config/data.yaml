@@ -1,10 +1,11 @@
 name: celeba
+path: /home/users/l/leighm/scratch/Data/data
 trans_kwargs:
   to_tens: True
   resize: 0
   rand_rotate: 0
-  rand_crop: 0
+  rand_crop: 128
   rand_flip: true
-  center_crop: 128
+  center_crop: 0
   augment: False
   shift_scale: !!python/tuple [0.5, 0.5] #127.5

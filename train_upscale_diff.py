@@ -8,7 +8,7 @@ from mattstools.trainer import Trainer
 
 from imgprc.utils import get_configs
 from imgprc.datasets import ImageDataset
-from imgprc.networks import UNetSRGAN
+from imgprc.diffusion import DiffusionSuperResolution
 
 import wandb
 
@@ -18,18 +18,18 @@ def main():
 
     ## Collect the session arguments, returning the configurations for the session
     data_conf, net_conf, train_conf = get_configs(
-        def_net="config/unet_gan.yaml", def_train="config/train_gan.yaml"
+        def_net="config/unet_diff.yaml", def_train="config/train.yaml"
     )
 
     ## Start a weights and biases session
-    wandb.init(
-        entity="mleigh",
-        project="ImageUpscaling",
-        name=net_conf.base_kwargs.name,
-        resume=train_conf.trainer_kwargs.resume,
-        id=train_conf.wandb_id or wandb.util.generate_id(),
-    )
-    train_conf.wandb_id = wandb.run.id
+    # wandb.init(
+    #     entity="mleigh",
+    #     project="ImageUpscaling",
+    #     name=net_conf.base_kwargs.name,
+    #     resume=train_conf.trainer_kwargs.resume,
+    #     id=train_conf.wandb_id or wandb.util.generate_id(),
+    # )
+    # train_conf.wandb_id = wandb.run.id
 
     ## Get the training set and validation set, as well as the backward transform
     train_set = ImageDataset(is_train=True, **data_conf)
@@ -46,7 +46,7 @@ def main():
     net_conf.steps_per_epoch = len(train_loader)
 
     ## Create the network
-    network = UNetSRGAN(**net_conf)
+    network = DiffusionSuperResolution(**net_conf)
     print(network)
 
     ## Create the save folder for the network and store the configuration dicts
