@@ -15,6 +15,7 @@ trainer_kwargs:
     lr: 1.0e-3
   sched_dict:
     name: warmup
+    num_steps: 512
     # name: cyclicwithwarmup
     # div_factor: 20
     # epochs_per_cycle: 15
