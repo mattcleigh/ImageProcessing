@@ -11,7 +11,7 @@ unet_kwargs:
   min_size: 4
   attn_after: 3
   start_channels: 16
-  max_channels: 128
+  max_channels: 64
   resnet_kwargs:
     dims: 2
     act: lrlu

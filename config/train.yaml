@@ -3,7 +3,7 @@ wandb_id: null
 loader_kwargs:
   pin_memory: true
   batch_size: 64
-  num_workers: 4
+  num_workers: 8
   drop_last: true
 
 trainer_kwargs:
@@ -23,7 +23,7 @@ trainer_kwargs:
     # final_div_factor: 20
 
   chkp_every: 1
-  quick_mode: 1
+  quick_mode: false
   tqdm_quiet: false
   vis_every: 1
   resume: false

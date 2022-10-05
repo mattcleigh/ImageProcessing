@@ -245,7 +245,7 @@ class DiffusionSuperResolution(MyNetBase):
         )
 
         ## Sample from the diffusion process
-        outputs, _ = self.reverse_diffusion(compressed_images.to(self.device), n_steps=50)
+        outputs, _ = self.reverse_diffusion(compressed_images.to(self.device), n_steps=100)
 
         ## Clip between -1 and 1 for showing images using floats
         outputs = T.clamp(outputs, -1, 1)
