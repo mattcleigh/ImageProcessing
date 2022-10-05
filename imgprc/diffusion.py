@@ -199,7 +199,7 @@ class DiffusionSuperResolution(MyNetBase):
 
         ## Start the iteration by sampling under the prior
         x_t = T.rand_like(ctxt_image)
-        for step in tqdm(range(n_steps + 1), "generating"):
+        for step in tqdm(range(n_steps), "generating"):
 
             ## Keep track of the diffusion evolution
             if keep_all:
@@ -214,7 +214,7 @@ class DiffusionSuperResolution(MyNetBase):
             x_0 = (x_t - nr * pred_noise) / sr
 
             ## The final step wont be used
-            if step == n_steps:
+            if step == (n_steps-1):
                 break
 
             ## Remix the predicted components using next signal and noise rates
