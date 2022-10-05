@@ -4,8 +4,7 @@ base_kwargs:
   save_dir: /home/matthew/Documents/saved_networks
   net_type: unet
 
-n_timesteps: 500
-loss_name: mse
+loss_name: huber
 time_embedding_dim: 16
 upscale_factor: 8
 unet_kwargs:

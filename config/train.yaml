@@ -12,10 +12,11 @@ trainer_kwargs:
   grad_clip: 10
   optim_dict:
     name: adam
-    lr: 1.0e-3
+    lr: 1.0e-4
   sched_dict:
-    name: warmup
-    num_steps: 512
+    name: none
+    # name: warmup
+    # num_steps: 512
     # name: cyclicwithwarmup
     # div_factor: 20
     # epochs_per_cycle: 15

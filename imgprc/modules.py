@@ -109,10 +109,7 @@ class PatchDiscriminator(nn.Module):
         final_kwargs.nrm_groups = 1
         final_kwargs.drp = 0  # No dropout! These are the outputs!
         self.final_block = ResNetBlock(
-            inpt_channels=out_c,
-            ctxt_dim=ctxt_dim,
-            outp_channels=1,
-            **final_kwargs,
+            inpt_channels=out_c, ctxt_dim=ctxt_dim, outp_channels=1, **final_kwargs
         )
 
     def forward(self, inpt: T.Tensor, ctxt: T.Tensor = None):
@@ -131,10 +128,5 @@ class PatchDiscriminator(nn.Module):
 
 
 if __name__ == "__main__":
-    test = PatchGANDiscriminator(
-        [128, 128],
-        3,
-        32,
-        ctxt_dim=0,
-    )
+    test = PatchGANDiscriminator([128, 128], 3, 32, ctxt_dim=0)
     test(T.randn((1, 3, 128, 128))).shape
