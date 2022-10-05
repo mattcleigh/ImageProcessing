@@ -1,5 +1,5 @@
-
 import math
+from typing import Tuple
 
 from tqdm import tqdm
 import numpy as np
@@ -15,79 +15,82 @@ from mattstools.torch_utils import get_loss_fn, to_np
 
 import wandb
 
-class CosineBetaSchedule(nn.Module):
-    """Anneal the beta_t evolution using a cosine schedule
 
-    Proposed in https://arxiv.org/abs/2102.09672
+def diffusion_shedule(
+    diff_time: T.Tensor, max_sr: float = 1, min_sr: float = 1e-8
+) -> Tuple[T.Tensor, T.Tensor]:
     """
-    def __init__(self, n_timesteps: int, s: float=1e-2):
-        """
-        args:
-            n_timesteps: The total number of timesteps used in the diffusion process
-        kwargs:
-            s: Smoothing parameter for the cosine annealing
-        """
-        super().__init__()
+    We will use continuous diffusion times between 0 and 1 which make switching between
+    different numbers of diffusion steps between training and testing much easier
 
-        t = T.linspace(0, n_timesteps, n_timesteps+1)
-        f = T.cos(((t / n_timesteps) + s) / (1 + s) * T.pi * 0.5) ** 2
+    Returns only the values needed for the jump forward diffusion step and the reverse
+    DDIM step.
+    These are sqrt(alpha_bar) and sqrt(1-alphabar) which are called the signal_rate
+    and noise_rate respectively.
 
-        ## Register variables as buffers so they move with the device
-        self.register_buffer("alphabars", f / f[0])
-        self.register_buffer("betas", 1 - (self.alphabars[1:] / self.alphabars[:-1]))
+    The jump forward diffusion process is simply a weighted sum of:
+        input * signal_rate + eps * noise_rate
 
-    def get_betas(self, times: T.Tensor)->T.Tensor:
-        """Return the beta values given specific timesteps, works with batch dim"""
-        return self.betas[times]
+    Uses a cosine annealing schedule as proposed in
+    Proposed in https://arxiv.org/abs/2102.09672
 
-    def get_alphabars(self, times: T.Tensor)->T.Tensor:
-        """Return the alpabar values given specific timesteps, works with batch dim"""
-        return self.alphabars[times]
+    args:
+        diff_time: The time used to sample the diffusion scheduler
+            Output will match the shape
+            Must be between 0 and 1
+    kwargs:
+        max_sr: The initial rate at the first step
+        min_sr: How much signal is preserved at end of diffusion
+            (can't be zero due to log)
+    """
 
-    def get_recip_sqrt_alphabars(self, times: T.Tensor)->T.Tensor:
-        """Return the recoprocal root alpha var values given specific timesteps"""
-        return 1 / self.alphabars[times].sqrt()
+    ## Use cosine annealing, which requires switching from times -> angles
+    start_angle = math.acos(max_sr)
+    end_angle = math.acos(min_sr)
+    diffusion_angles = start_angle + diff_time * (end_angle - start_angle)
+    signal_rates = T.cos(diffusion_angles)
+    noise_rates = T.sin(diffusion_angles)
+    return signal_rates, noise_rates
 
 
 class SinusoidalEmbedding(nn.Module):
-  """Computes a positional embedding of timesteps using a sinusoid.
+    """Computes a positional embedding of time values using a sinusoid.
   This is the same equation used to for positional encodings for transformers
 
   The embedded vector is [ sin(w_0*t), ... sin(w_d/2*t), cos(w_0*t) ... cos(w_d/2*t)]
   Where:
   - d is the embedded dimension
   - w_k is the specific frequency = 1/(10000)^(2k/d)
-
   """
 
-  def __init__(self, dim: int):
-    """
+    def __init__(self, dim: int):
+        """
     args:
         dim: The embedding dimension size, must be even
     """
-    super().__init__()
-    assert dim % 2 == 0
-    self.dim = dim
+        super().__init__()
+        assert dim % 2 == 0
+        self.dim = dim
 
-  def forward(self, x: T.Tensor)->T.Tensor:
-    """Return the embedding for given positions, works with batch dimension"""
-    half_dim = self.dim // 2
-    emb = (- T.arange(half_dim, device=x.device) * math.log(10000) / half_dim).exp()
-    emb = x.view(-1, 1) * emb.view(-1, half_dim)
-    emb = T.cat((emb.sin(), emb.cos()), dim=-1)
-    return emb
+    def forward(self, x: T.Tensor) -> T.Tensor:
+        """Return the embedding for given positions, works with batch dimension"""
+        half_dim = self.dim // 2
+        emb = (-T.arange(half_dim, device=x.device) * math.log(10000) / half_dim).exp()
+        emb = x.view(-1, 1) * emb.view(-1, half_dim)
+        emb = T.cat((emb.sin(), emb.cos()), dim=-1)
+        return emb
 
 
 class DiffusionSuperResolution(MyNetBase):
     """A image to image model for increasing the resolution of an image using the
     diffusion process.
     """
+
     def __init__(
         self,
         *,
         base_kwargs: dict,
         loss_name: str = "mse",
-        n_timesteps: int = 1000,
         time_embedding_dim: int = 8,
         upscale_factor: int = 4,
         unet_kwargs: dict = None,
@@ -96,11 +99,10 @@ class DiffusionSuperResolution(MyNetBase):
         """
         kwargs:
             loss_name: Name of the loss function to use for noise estimation
-            n_timesteps: Total number of timesteps used in the diffusion process
-            time_embedding_dim: Embedding size of the timestep encoding
+            time_embedding_dim: Embedding size of the diffusion time encoding
             upscale_factor: Amount by which to upscale the image
             unet_kwargs: Keyword arguments for the UNet network
-            time_embed_kwargs: Keyword arguments for the Dense timestep embedder
+            time_embed_kwargs: Keyword arguments for the Dense time embedder
         """
         super().__init__(**base_kwargs)
 
@@ -108,7 +110,6 @@ class DiffusionSuperResolution(MyNetBase):
         unet_kwargs = unet_kwargs or {}
 
         ## Attributes
-        self.n_timesteps = n_timesteps
         self.time_embedding_dim = time_embedding_dim
         self.upscale_factor = upscale_factor
         self.loss_fn = get_loss_fn(loss_name)
@@ -118,22 +119,20 @@ class DiffusionSuperResolution(MyNetBase):
             SinusoidalEmbedding(self.time_embedding_dim),
             DenseNetwork(
                 inpt_dim=self.time_embedding_dim,
-                outp_dim=4*self.time_embedding_dim,
-                **time_embed_kwargs
-                ),
+                outp_dim=4 * self.time_embedding_dim,
+                **time_embed_kwargs,
+            ),
         )
 
         ## Initialise the generator model making up this network
         self.unet = UNet(
             inpt_size=self.inpt_dim[1:],
-            inpt_channels=self.inpt_dim[0]*2, ## Will concatenate blurry image to inpt
+            inpt_channels=self.inpt_dim[0]
+            * 2,  ## Will concatenate blurry image to inpt
             outp_channels=self.inpt_dim[0],
-            ctxt_dim=4*self.time_embedding_dim,
+            ctxt_dim=4 * self.time_embedding_dim,
             **unet_kwargs,
         )
-
-        ## The scheduler for calculating the appropriate beta values
-        self.beta_shedule = CosineBetaSchedule(self.n_timesteps)
 
         ## Initialise the optimisers
         self._setup()
@@ -144,79 +143,47 @@ class DiffusionSuperResolution(MyNetBase):
         """Function called by the trainer"""
 
         ## Unpack the sample tuple
-        images, ctxt_tensor = sample
+        images, _ = sample
 
         ## Downscale and upscale the images to be used for conditional diffusion
         ctxt_images = interpolate(
             avg_pool2d(images, self.upscale_factor, self.upscale_factor),
-            scale_factor=self.upscale_factor
+            scale_factor=self.upscale_factor,
         )
 
-        ## Sample random timesteps and noise values
-        times = T.randint(
-            low=1, high=self.n_timesteps, size=(len(images),), device=self.device
-        )
+        ## Sample random time values and get the noise rates from the scheduler
+        diff_time = T.rand(size=(len(images), 1), device=self.device)
+        signal_rates, noise_rates = diffusion_shedule(diff_time.view(-1, 1, 1, 1))
+
+        ## Sample random noise to perturb the images
         noise = T.randn_like(ctxt_images)
 
-        ## Retrive the alpha bar values from the beta scheduler
-        alpha_bars = self.beta_shedule.get_alphabars(times)
-        alpha_bars = alpha_bars.view(-1, 1, 1, 1)
-
         ## Apply the noise to the input images using the diffusion equation
-        x_t = alpha_bars.sqrt() * images + (1-alpha_bars).sqrt() * noise
+        x_t = signal_rates * images + noise_rates * noise
 
-        ## Estimate the noise that was added using the conditional UNet
-        estimated_noise = self.estimate_noise(x_t, ctxt_images, times)
+        ## Predict the noise that was added using the conditional UNet
+        pred_noise = self.pred_noise(x_t, ctxt_images, diff_time)
 
         ## Calculate the loss on the noise values
-        rec_loss = self.loss_fn(estimated_noise, noise).mean()
+        rec_loss = self.loss_fn(pred_noise, noise).mean()
 
         ## Return the loss dictionary
         return {"total": rec_loss}
 
-    def estimate_noise(self, x_t: T.Tensor, ctxt_image: T.Tensor, time: T.Tensor):
-        """
+    def pred_noise(
+        self, x_t: T.Tensor, ctxt_image: T.Tensor, time: T.Tensor
+    ) -> T.Tensor:
+        """Predict the noise applied to an image at a specific time in the diffusion
         args:
             x_t: The current iteration of the diffusion process
-            ctxt_image: The FULL size but blurry image for context
-            time: The iteration point, used through positional encoding
+            ctxt_image: The FULL size context image
+            time: The iteration time between 0 and 1
         """
-        time_encoding = self.time_embedder(time)
-        return self.unet(T.cat([x_t, ctxt_image], dim=1), time_encoding)
+        return self.unet(T.cat([x_t, ctxt_image], dim=1), ctxt=self.time_embedder(time))
 
-    def ddpm_denoise(self, x_t: T.Tensor, ctxt_image: T.Tensor, time: T.Tensor):
-        """Apply a single denoising step for a particular point on the trajectory"""
-
-        ## Calculate the terms from the scheduler
-        betas = self.beta_shedule.get_betas(time).view(-1, 1, 1, 1)
-        alphabars = self.beta_shedule.get_alphabars(time).view(-1, 1, 1, 1)
-        noise = T.randn_like(x_t)
-
-        ## Get the estimated noise using the network
-        estimated_noise = self.estimate_noise(x_t, ctxt_image, time)
-
-        ## Multiply the estimated noise values by their coefficients
-        return (x_t - betas / (1-alphabars).sqrt()) / alphabars.sqrt() + betas * noise
-
-    def ddim_denoise(self, x_t: T.Tensor, ctxt_image: T.Tensor, time: T.Tensor, time_next: T.Tensor):
-        """Apply a single denoising step using the DDIM method
-        Here time_next is the next iteration point we will jump straight to
-        """
-
-        ## Calculate the terms from the scheduler
-        alphabars = self.beta_shedule.get_alphabars(time).view(-1, 1, 1, 1)
-        next_alphabars = self.beta_shedule.get_alphabars(time_next).view(-1, 1, 1, 1)
-
-        ## Get the estimated noise using the network
-        estimated_noise = self.estimate_noise(x_t, ctxt_image, time)
-
-        ## Return the DDIM jump step
-        out = (x_t - T.sqrt(1-alphabars)*estimated_noise)
-        out *= T.sqrt(next_alphabars/alphabars)
-        out += T.sqrt(1-next_alphabars)*estimated_noise
-        return out
-
-    def sample(self, ctxt_image: T.Tensor, n_steps: None, keep_all: bool = False):
+    def reverse_diffusion(
+        self, ctxt_image: T.Tensor, n_steps: 50, keep_all: bool = False
+    ) -> Tuple[T.Tensor, list]:
         """Apply the full reverse process to the image
         args:
             ctxt_image: The FULL size but blurry image for context
@@ -226,36 +193,36 @@ class DiffusionSuperResolution(MyNetBase):
         """
 
         ## Check the input argument for the n_steps, must be less than what was trained
-        all_outs = []
+        all_x = []
         batch_size = ctxt_image.shape[0]
-        n_steps = n_steps or self.n_timesteps
-        assert n_steps <= self.n_timesteps
+        step_size = 1 / n_steps
 
-        ## Sample under the prior
+        ## Start the iteration by sampling under the prior
         x_t = T.rand_like(ctxt_image)
+        for step in tqdm(range(n_steps), "generating"):
 
-        ## If using the full range, then we use DDPM
-        if n_steps == self.n_timesteps:
-            for time in tqdm(reversed(range(1, self.n_timesteps)), "generating"):
+            ## Keep track of the diffusion evolution
+            if keep_all:
+                all_x.append(x_t)
 
-                ## Expand the times to the full batch size
-                time = T.tensor([time], device=self.device).repeat(batch_size)
+            ## Get the diffusion time working back from 1 to 0
+            diff_time = T.ones((batch_size,), device=self.device) - step * step_size
 
-                ## Perform the denoising step
-                x_t = self.ddpm_denoise(x_t, ctxt_image, time)
-            return x_t
+            ## Predict x_0 using the DIMM method
+            sr, nr = diffusion_shedule(diff_time.view(-1, 1, 1, 1))
+            pred_noise = self.pred_noise(x_t, ctxt_image, diff_time)
+            x_0 = (x_t - nr * pred_noise) / sr
 
-        ## If using less timesteps then we use the DDIM sampling method
-        time_steps = range(0, self.n_timesteps, self.n_timesteps//n_steps)
-        time_steps = list(time_steps)
-        if time_steps[-1] != self.n_timesteps:
-            time_steps.append(self.n_timesteps)
-        time_steps.reverse()
-        for time, time_next in tqdm(zip(time_steps[:-1], time_steps[1:]), "generating"):
-            time = T.tensor([time], device=self.device).repeat(batch_size)
-            time_next = T.tensor([time_next], device=self.device).repeat(batch_size)
-            x_t = self.ddim_denoise(x_t, ctxt_image, time, time_next)
-        return x_t
+            ## The final step wont be used
+            if step == (n_steps-1):
+                break
+
+            ## Remix the predicted components using next signal and noise rates
+            next_diff_time = diff_time - step_size
+            next_sr, next_nr = diffusion_shedule(next_diff_time.view(-1, 1, 1, 1))
+            x_t = next_sr * x_0 + next_nr * pred_noise
+
+        return x_0, all_x
 
     def visualise(self, loader, path, flag, epochs):
         """Visualise the predictions using weights and biases"""
@@ -269,7 +236,7 @@ class DiffusionSuperResolution(MyNetBase):
         test_table = wandb.Table(columns=columns)
 
         ## Just take the first batch
-        images, ctxt = next(iter(loader))
+        images, _ = next(iter(loader))
 
         ## Get the low quality input images for the network
         compressed_images = interpolate(
@@ -278,7 +245,10 @@ class DiffusionSuperResolution(MyNetBase):
         )
 
         ## Sample from the diffusion process
-        outputs = self.sample(compressed_images.to(self.device), n_steps=50)
+        outputs, _ = self.reverse_diffusion(compressed_images.to(self.device), n_steps=50)
+
+        ## Clip between -1 and 1 for showing images using floats
+        outputs = T.clamp(outputs, -1, 1)
 
         ## Convert to numpy
         inputs = to_np(compressed_images)
