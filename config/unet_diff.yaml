@@ -1,11 +1,10 @@
 base_kwargs:
   device: gpu
   name: DiffusionSuperResolution
-  save_dir: /home/matthew/Documents/saved_networks
+  save_dir: /home/users/l/leighm/scratch/Saved_Networks/ImageProcessing
   net_type: unet
 
-n_timesteps: 500
-loss_name: mse
+loss_name: mae
 time_embedding_dim: 8
 upscale_factor: 8
 unet_kwargs:
