@@ -1,0 +1,33 @@
+_target_: src.datamodules.images.ImageDataModule
+_convert_: object
+
+train_set:
+  _target_: torchvision.datasets.ImageFolder
+  _partial_: True
+  root: ${paths.data_dir}/afhq/train
+  transform:
+    _target_: torchvision.transforms.Compose
+    transforms:
+      - _target_: torchvision.transforms.PILToTensor
+      - _target_: torchvision.transforms.Resize
+        size: 256
+      - _target_: torchvision.transforms.RandomCrop
+        size: 128
+      - _target_: torchvision.transforms.ConvertImageDtype
+        dtype:
+          _target_: mattstools.mattstools.torch_utils.dtype_lookup
+          dtype: float
+
+
+test_set:
+  _target_: ${..train_set._target_}
+  _partial_: True
+  root: ${paths.data_dir}/afhq/val
+  transform: ${..train_set.transform}
+
+loader_config:
+  pin_memory: true
+  batch_size: 128
+  num_workers: 8
+  drop_last: True
+  shuffle: True

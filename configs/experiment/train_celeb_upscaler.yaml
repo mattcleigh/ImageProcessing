@@ -1,0 +1,13 @@
+# @package _global_
+
+trainer:
+  precision: 16
+
+# datamodule:
+#   data_conf:
+#     log_squash_pt: False
+#     recalculate_jet_from_pc: True
+
+# ckpt_path: /srv/beegfs/scratch/groups/rodem/jet_diffusion/checkpoints/pc_jedi/16_bit/checkpoints/last-v1.ckpt
+project_name: pc_jedi
+network_name: all_jet_model

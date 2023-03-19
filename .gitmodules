@@ -1,0 +1,3 @@
+[submodule "mattstools"]
+	path = mattstools
+	url = https://gitlab.cern.ch/mleigh/mattstools.git
