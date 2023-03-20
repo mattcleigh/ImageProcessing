@@ -17,6 +17,10 @@ project_name: image_processing # Determines output directory path and wandb proj
 network_name: test_generator # Used for both saving and wandb
 ckpt_path: null  # Checkpoint path to resume training
 
+# Extra tweaks available with the new pytorch version
+precision: medium # Should use medium if on ampere gpus
+compile: null # Can set to default for faster compiles
+
 # COMPLETELY replaces the above config with what is contained in ${paths.full_path}
 # This is ideal for resuming a job, log to the same directory
 # Will also resume the loggers and set the ckpt_path to the latest

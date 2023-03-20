@@ -2,19 +2,20 @@ import copy
 from functools import partial
 from typing import Mapping, Tuple
 
-import numpy as np
 import pytorch_lightning as pl
 import torch as T
 import wandb
+from torchvision.utils import make_grid
 
+from mattstools.mattstools.cnns import UNet
 from mattstools.mattstools.k_diffusion import get_timesteps, heun_sampler
 from mattstools.mattstools.modules import CosineEncoding, IterativeNormLayer
 from mattstools.mattstools.torch_utils import get_loss_fn, get_sched
-from mattstools.mattstools.cnns import UNet
-from torchvision.utils import make_grid
+
 
 class ImageDiffusionGenerator(pl.LightningModule):
-    """A generative model which uses the diffusion process on an image input."""
+    """A generative model which uses the diffusion process on an image
+    input."""
 
     def __init__(
         self,
@@ -26,6 +27,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
         optimizer: partial,
         sched_config: Mapping,
         use_ctxt: bool = True,
+        use_ctxt_img: bool = False,
         loss_name: str = "mse",
         min_time: float = 0,
         max_time: float = 80.0,
@@ -56,6 +58,8 @@ class ImageDiffusionGenerator(pl.LightningModule):
         use_ctxt : Bool
             If the config from the image is used in the diffusion process
             Default is False
+        use_ctxt_img: Bool
+            If the sample context image is used for generation. Default is False
         loss_name : str, optional
             The name of the loss function used to train the neural network.
             Default is "mse".
@@ -94,6 +98,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
         # Break down the data sample to get the important dimensions
         self.inpt_dim = data_sample[0].shape
         self.ctxt_dim = data_sample[1].shape if use_ctxt else 0
+        self.ctxt_img_dim = data_sample[2].shape if use_ctxt_img else [0]
 
         # Class attributes
         self.loss_fn = get_loss_fn(loss_name)
@@ -103,6 +108,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
         self.p_mean = p_mean
         self.p_std = p_std
         self.use_ctxt = use_ctxt
+        self.use_ctxt_img = use_ctxt_img
 
         # The encoder and scheduler needed for diffusion
         self.time_encoder = CosineEncoding(
@@ -121,7 +127,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
         # The base UNet
         self.net = UNet(
             inpt_size=self.inpt_dim[1:],
-            inpt_channels=self.inpt_dim[0],
+            inpt_channels=self.inpt_dim[0] + self.ctxt_img_dim[0],
             outp_channels=self.inpt_dim[0],
             ctxt_dim=self.ctxt_dim + self.time_encoder.outp_dim,
             **unet_config,
@@ -137,10 +143,11 @@ class ImageDiffusionGenerator(pl.LightningModule):
         self.sampler_steps = sampler_steps
 
         # Initial noise for running the visualisation at the end of the epoch
-        self.initial_noise = T.randn((5, *self.inpt_dim)) * self.max_time
+        self.n_visualise = 5
+        self.initial_noise = T.randn((self.n_visualise, *self.inpt_dim)) * self.max_time
 
     def get_c_values(self, diffusion_times: T.Tensor) -> tuple:
-        """Calculate the c values needed for the I/O"""
+        """Calculate the c values needed for the I/O."""
 
         # Ee use cos encoding so we dont need c_noise
         c_in = 1 / (1 + diffusion_times**2).sqrt()
@@ -149,12 +156,12 @@ class ImageDiffusionGenerator(pl.LightningModule):
 
         return c_in, c_out, c_skip
 
-    def denoise(
+    def forward(
         self,
         noisy_data: T.Tensor,
         diffusion_times: T.Tensor,
         ctxt: T.Tensor | None = None,
-        mask: T.BoolTensor | None = None,  # Keep this for generalisation for pc gen
+        ctxt_img: T.Tensor | None = None,
     ) -> T.Tensor:
         """Return the denoised data from a given timestep."""
 
@@ -162,16 +169,17 @@ class ImageDiffusionGenerator(pl.LightningModule):
         c_in, c_out, c_skip = self.get_c_values(diffusion_times.view(-1, 1, 1, 1))
 
         # Scale the inputs and pass through the network
-        outputs = self.forward(c_in * noisy_data, diffusion_times, ctxt)
+        outputs = self.get_outputs(c_in * noisy_data, diffusion_times, ctxt, ctxt_img)
 
         # Get the denoised output by passing the scaled input through the network
         return c_skip * noisy_data + c_out * outputs
 
-    def forward(
+    def get_outputs(
         self,
         noisy_data: T.Tensor,
         diffusion_times: T.Tensor,
         ctxt: T.Tensor | None = None,
+        ctxt_img: T.Tensor | None = None,
     ) -> T.Tensor:
         """Pass through the model, corresponds to F_theta in the Karras
         paper."""
@@ -187,6 +195,10 @@ class ImageDiffusionGenerator(pl.LightningModule):
         if self.ctxt_dim:
             context = T.cat([context, ctxt], dim=-1)
 
+        # Concat the context image to the noise along the channel dimension
+        if self.use_ctxt_img:
+            noisy_data = T.cat([noisy_data, ctxt_img], dim=1)
+
         # Use the selected network to esitmate the noise present in the data
         return network(noisy_data, ctxt=context)
 
@@ -194,7 +206,9 @@ class ImageDiffusionGenerator(pl.LightningModule):
         """Shared step used in both training and validaiton."""
 
         # Unpack the sample tuple
-        data, ctxt = sample
+        data = sample[0]
+        ctxt = sample[1]
+        ctxt_img = sample[2] if len(sample) > 2 else None
 
         # Pass through the normalisers
         data = self.normaliser(data)
@@ -202,7 +216,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
             ctxt = self.ctxt_normaliser(ctxt)
 
         # Sample times using the Karras method using a log normal distribution
-        diffusion_times = T.zeros(size=(len(data), 1), device=self.device)
+        diffusion_times = T.zeros(size=(data.shape[0], 1), device=self.device)
         diffusion_times.add_(self.p_mean + self.p_std * T.randn_like(diffusion_times))
         diffusion_times.exp_().clamp_(self.min_time, self.max_time)
 
@@ -216,7 +230,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
         noisy_data = data + noises
 
         # Pass through the network
-        output = self.forward(c_in * noisy_data, diffusion_times, ctxt)
+        output = self.get_outputs(c_in * noisy_data, diffusion_times, ctxt, ctxt_img)
 
         # Calculate the effective training target
         target = (data - c_skip * noisy_data) / c_out
@@ -234,10 +248,18 @@ class ImageDiffusionGenerator(pl.LightningModule):
         loss = self._shared_step(sample)
         self.log("valid/total_loss", loss)
 
-        # Run the generation for the first batch
+        # For only the first batch if the logger is running
         if batch_idx == 0 and wandb.run is not None:
+
+            # Unpack the context from the sample tuple
+            ctxt = sample[1][: self.n_visualise]
+            ctxt_img = sample[2][: self.n_visualise] if len(sample) > 2 else None
+
+            # Run the full generation
             gen_images = self.full_generation(
-                initial_noise=self.initial_noise.to(self.device), ctxt=sample[1]
+                initial_noise=self.initial_noise.to(self.device),
+                ctxt=ctxt,
+                ctxt_img=ctxt_img,
             )
             wandb.log({"images": wandb.Image(make_grid(gen_images))}, commit=False)
 
@@ -265,8 +287,10 @@ class ImageDiffusionGenerator(pl.LightningModule):
         self,
         initial_noise: T.Tensor,
         ctxt: T.Tensor | None = None,
+        ctxt_img: T.Tensor | None = None,
     ) -> T.Tensor:
-        """Fully generate a batch of data from noise, given context information"""
+        """Fully generate a batch of data from noise, given context
+        information."""
 
         # Normalise the context
         if self.ctxt_dim:
@@ -284,7 +308,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
             initial_noise=initial_noise,
             time_steps=time_steps,
             keep_all=False,
-            ctxt=ctxt,
+            extra_args={"ctxt": ctxt, "ctxt_img": ctxt_img},
         )
 
         # Return the output

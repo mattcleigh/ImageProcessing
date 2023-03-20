@@ -1,0 +1,12 @@
+# @package _global_
+
+defaults:
+  - override /datamodule: animals.yaml
+
+datamodule:
+  loader_config:
+    batch_size: 16
+    num_workers: 4
+
+project_name: image_processing
+network_name: afhqv2_128_large

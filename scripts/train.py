@@ -2,11 +2,11 @@ import pyrootutils
 
 root = pyrootutils.setup_root(search_from=__file__, pythonpath=True)
 
-
 import logging
 
 import hydra
 import pytorch_lightning as pl
+import torch as T
 from omegaconf import DictConfig
 
 from mattstools.mattstools.hydra_utils import (
@@ -33,12 +33,20 @@ def main(cfg: DictConfig) -> None:
         log.info(f"Setting seed to: {cfg.seed}")
         pl.seed_everything(cfg.seed, workers=True)
 
+    if cfg.precision:
+        log.info(f"Setting matrix precision to: {cfg.precision}")
+        T.set_float32_matmul_precision(cfg.precision)
+
     log.info("Instantiating the data module")
     datamodule = hydra.utils.instantiate(cfg.datamodule)
 
     log.info("Instantiating the model")
-    model = hydra.utils.instantiate(cfg.model, data_sample= datamodule.get_data_sample())
+    model = hydra.utils.instantiate(cfg.model, data_sample=datamodule.get_data_sample())
     log.info(model)
+
+    if cfg.compile:
+        log.info(f"Compiling the model using torch 2.0: {cfg.compile}")
+        model = T.compile(model, mode=cfg.compile)
 
     log.info("Instantiating all callbacks")
     callbacks = instantiate_collection(cfg.callbacks)

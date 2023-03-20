@@ -1,0 +1,15 @@
+# @package _global_
+
+defaults:
+  - override /datamodule: animals_upscale.yaml
+
+model:
+  use_ctxt_img: True
+
+datamodule:
+  loader_config:
+    batch_size: 32
+
+# ckpt_path: /srv/beegfs/scratch/groups/rodem/jet_diffusion/checkpoints/pc_jedi/16_bit/checkpoints/last-v1.ckpt
+project_name: image_processing
+network_name: afhqv2_upscaler_128to256

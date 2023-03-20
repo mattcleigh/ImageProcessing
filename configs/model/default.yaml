@@ -1,6 +1,7 @@
 _target_: src.models.diffusion.ImageDiffusionGenerator
 
 use_ctxt: False
+use_ctxt_img: False
 loss_name: mse
 min_time: 0
 max_time: 80
@@ -9,7 +10,7 @@ p_mean: -1.2
 p_std: 1.2
 
 sampler_name: heun
-sampler_steps: 50
+sampler_steps: 100
 sampler_min_time: 1.0e-3
 sampler_curvature: 7
 
@@ -22,18 +23,19 @@ normaliser_config:
 
 # Full UNet Model
 unet_config:
-  min_size: 8
+  min_size: 16
   attn_below: 16
-  start_channels: 32
-  max_channels: 128
+  start_channels: 128
+  max_channels: 256
   resnet_config:
-    act: lrlu
-    drp: 0
+    act: silu
+    drp: 0.1
     nrm_groups: 4
   attn_config:
     num_heads: 4
     nrm_groups: 4
   ctxt_embed_config:
+    act_h: silu
     hddn_dim: 128
     num_blocks: 2
     nrm: layer
@@ -42,14 +44,14 @@ unet_config:
 optimizer:
   _target_: torch.optim.AdamW
   _partial_: true
-  lr: 5.0e-4
+  lr: 2.0e-4
   weight_decay: 0
 
 # Config dicts to pass to mattstools and pytorch lightning
 sched_config:
   mattstools:
     name: warmup
-    num_steps: 10000
+    num_steps: 100000
   lightning:
     monitor: valid/total_loss
     interval: step
