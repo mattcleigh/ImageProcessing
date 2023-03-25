@@ -8,7 +8,6 @@ import wandb
 from torchvision.utils import make_grid
 
 from mattstools.mattstools.cnns import UNet
-from mattstools.mattstools.k_diffusion import get_timesteps, heun_sampler
 from mattstools.mattstools.modules import CosineEncoding, IterativeNormLayer
 from mattstools.mattstools.torch_utils import get_loss_fn, get_sched
 
@@ -34,10 +33,8 @@ class ImageDiffusionGenerator(pl.LightningModule):
         ema_sync: float = 0.999,
         p_mean: float = -1.2,
         p_std: float = 1.2,
-        sampler_name: str = "heun",
-        sampler_steps: int = 50,
-        sampler_min_time: int = 1e-3,
-        sampler_curvature: float = 7.0,
+        sampler_function: callable | None = None,
+        sigma_function: callable | None = None,
     ) -> None:
         """
         Parameters:
@@ -78,18 +75,10 @@ class ImageDiffusionGenerator(pl.LightningModule):
             The standard deviation value used for the sigma distribution during
             training.
             Default is 1.2.
-        sampler_name : str, optional
-            The name of the sampler used in the validation/testing loop.
-            Default is "heun".
-        sampler_steps : int, optional
-            The number of steps used for the sampler in the validation/testing loop.
-            Default is 50.
-        sampler_min_time : int, optional
-            The minimum time value used for the sampler in the validation/testing loop.
-            Default is 1e-3.
-        sampler_curvature : float, optional
-            The curvature value used for the sampler in the validation/testing loop.
-            Default is 7.0.
+        sampler_function : callable
+            Callable sampler function to use during the generation steps
+        sigma_function : callable
+            Callable function for calculating the sigma steps for generation
         """
 
         super().__init__()
@@ -134,13 +123,12 @@ class ImageDiffusionGenerator(pl.LightningModule):
         )
 
         # A copy of the network which will sync with an exponential moving average
-        self.ema_net = copy.deepcopy(self.net)
+        if ema_sync:
+            self.ema_net = copy.deepcopy(self.net)
 
         # Sampler to run in the validation/testing loop
-        self.sampler_curvature = sampler_curvature
-        self.sampler_name = sampler_name
-        self.sampler_min_time = sampler_min_time
-        self.sampler_steps = sampler_steps
+        self.sampler_function = sampler_function
+        self.sigma_function = sigma_function
 
         # Initial noise for running the visualisation at the end of the epoch
         self.n_visualise = 5
@@ -185,7 +173,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
         paper."""
 
         # Use the appropriate network for training or validation
-        if self.training:
+        if self.training or not self.ema_sync:
             network = self.net
         else:
             network = self.ema_net
@@ -249,8 +237,12 @@ class ImageDiffusionGenerator(pl.LightningModule):
         self.log("valid/total_loss", loss)
 
         # For only the first batch if the logger is running
-        if batch_idx == 0 and wandb.run is not None:
-
+        if (
+            batch_idx == 0
+            and wandb.run is not None
+            and self.sampler_function is not None
+            and self.sigma_function is not None
+        ):
             # Unpack the context from the sample tuple
             ctxt = sample[1][: self.n_visualise]
             ctxt_img = sample[2][: self.n_visualise] if len(sample) > 2 else None
@@ -265,14 +257,15 @@ class ImageDiffusionGenerator(pl.LightningModule):
 
     def _sync_ema_network(self) -> None:
         """Updates the Exponential Moving Average Network."""
-        with T.no_grad():
-            for params, ema_params in zip(
-                self.net.parameters(), self.ema_net.parameters()
-            ):
-                ema_params.data.copy_(
-                    self.ema_sync * ema_params.data
-                    + (1.0 - self.ema_sync) * params.data
-                )
+        if self.ema_sync:
+            with T.no_grad():
+                for params, ema_params in zip(
+                    self.net.parameters(), self.ema_net.parameters()
+                ):
+                    ema_params.data.copy_(
+                        self.ema_sync * ema_params.data
+                        + (1.0 - self.ema_sync) * params.data
+                    )
 
     def on_fit_start(self, *_args) -> None:
         """Function to run at the start of training."""
@@ -298,16 +291,13 @@ class ImageDiffusionGenerator(pl.LightningModule):
             assert len(ctxt) == len(initial_noise)
 
         # Generate the timesteps/sigma values for the sampler
-        time_steps = get_timesteps(
-            self.max_time, self.min_time, self.sampler_steps, self.sampler_curvature
-        )
+        sigmas = self.sigma_function(self.max_time, self.min_time)
 
         # Run the deterministic sampler
-        outputs, _ = heun_sampler(
+        outputs, _ = self.sigma_function(
             model=self,
-            initial_noise=initial_noise,
-            time_steps=time_steps,
-            keep_all=False,
+            x=initial_noise,
+            sigmas=sigmas,
             extra_args={"ctxt": ctxt, "ctxt_img": ctxt_img},
         )
 

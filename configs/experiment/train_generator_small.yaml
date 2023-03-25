@@ -13,8 +13,8 @@ model:
   unet_config:
     min_size: 8
     attn_below: 16
-    start_channels: 128
-    max_channels: 256
+    start_channels: 32
+    max_channels: 32
   sched_config:
     mattstools:
       name: warmup
@@ -32,13 +32,12 @@ model:
 
 trainer:
   precision: 16-mixed
-  strategy: ddp_find_unused_parameters_true # For ddp to allow ema networks
 
 precision: medium
 compile: null
 
-resize: 140
-crop_size: 128
+resize: 40
+crop_size: 32
 
 project_name: image_processing
-network_name: afhqv2_64_large_lookahead
+network_name: small

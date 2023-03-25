@@ -10,10 +10,10 @@ train_set:
     transforms:
       - _target_: torchvision.transforms.PILToTensor
       - _target_: torchvision.transforms.Resize
-        size: 140
+        size: ${resize}
         antialias: False
       - _target_: torchvision.transforms.RandomCrop
-        size: 128
+        size: ${crop_size}
       - _target_: torchvision.transforms.RandomHorizontalFlip
       - _target_: torchvision.transforms.ConvertImageDtype
         dtype:
@@ -30,10 +30,10 @@ test_set:
     transforms:
       - _target_: torchvision.transforms.PILToTensor
       - _target_: torchvision.transforms.Resize
-        size: 140
+        size: ${resize}
         antialias: False
       - _target_: torchvision.transforms.CenterCrop
-        size: 128
+        size: ${crop_size}
       - _target_: torchvision.transforms.ConvertImageDtype
         dtype:
           _target_: mattstools.mattstools.torch_utils.dtype_lookup

@@ -12,6 +12,7 @@ logs/
 wandb/
 latex/
 mpgan/
+media/
 
 # File types
 *.pyc

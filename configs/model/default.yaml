@@ -5,14 +5,20 @@ use_ctxt_img: False
 loss_name: mse
 min_time: 0
 max_time: 80
-ema_sync: 0.999
+ema_sync: 0.9999
 p_mean: -1.2
 p_std: 1.2
 
-sampler_name: heun
-sampler_steps: 100
-sampler_min_time: 1.0e-3
-sampler_curvature: 7
+# Sampler and noise schedule for the generation
+sampler_function:
+  _target_: mattstools.mattstools.k_diffusion.sample_stochastic_heun
+  _partial_: True
+
+sigma_function:
+  _target_: mattstools.mattstools.k_diffusion.get_sigmas_karras
+  _partial_: True
+  n_steps: 100
+  rho: 7
 
 cosine_config:
   outp_dim: 16
@@ -23,10 +29,11 @@ normaliser_config:
 
 # Full UNet Model
 unet_config:
-  min_size: 16
+  min_size: 8
   attn_below: 16
   start_channels: 128
   max_channels: 256
+  zero_out: True
   resnet_config:
     act: silu
     drp: 0.1
@@ -44,7 +51,7 @@ unet_config:
 optimizer:
   _target_: torch.optim.AdamW
   _partial_: true
-  lr: 2.0e-4
+  lr: 1.0e-4
   weight_decay: 0
 
 # Config dicts to pass to mattstools and pytorch lightning
