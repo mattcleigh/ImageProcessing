@@ -5,20 +5,20 @@ defaults:
 
 datamodule:
   loader_config:
-    batch_size: 32
-    num_workers: 4
+    batch_size: 128
+    num_workers: 16
 
 model:
   ema_sync: 0
   unet_config:
     min_size: 8
     attn_below: 16
-    start_channels: 32
-    max_channels: 32
+    start_channels: 64
+    max_channels: 128
   sched_config:
     mattstools:
       name: warmup
-      num_steps: 2_00_000
+      num_steps: 10_000
   optimizer:
     _target_: mattstools.mattstools.optimisers.Lookahead
     _partial_: True
@@ -36,8 +36,8 @@ trainer:
 precision: medium
 compile: null
 
-resize: 40
-crop_size: 32
+resize: 80
+crop_size: 64
 
 project_name: image_processing
-network_name: small
+network_name: afhqv2_64_nozero

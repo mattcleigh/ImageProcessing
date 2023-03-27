@@ -1,6 +1,6 @@
 import copy
 from functools import partial
-from typing import Mapping, Tuple
+from typing import Callable, Mapping, Tuple
 
 import pytorch_lightning as pl
 import torch as T
@@ -33,8 +33,8 @@ class ImageDiffusionGenerator(pl.LightningModule):
         ema_sync: float = 0.999,
         p_mean: float = -1.2,
         p_std: float = 1.2,
-        sampler_function: callable | None = None,
-        sigma_function: callable | None = None,
+        sampler_function: Callable | None = None,
+        sigma_function: Callable | None = None,
     ) -> None:
         """
         Parameters:
@@ -294,7 +294,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
         sigmas = self.sigma_function(self.max_time, self.min_time)
 
         # Run the deterministic sampler
-        outputs, _ = self.sigma_function(
+        outputs, _ = self.sampler_function(
             model=self,
             x=initial_noise,
             sigmas=sigmas,

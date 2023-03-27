@@ -33,7 +33,7 @@ unet_config:
   attn_below: 16
   start_channels: 128
   max_channels: 256
-  zero_out: True
+  zero_out: False
   resnet_config:
     act: silu
     drp: 0.1
