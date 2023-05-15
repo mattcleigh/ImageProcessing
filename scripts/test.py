@@ -1,14 +1,21 @@
-import torch
-import torch.nn as nn
+import pyrootutils
 
-model = nn.Sequential(
-    nn.Linear(12, 12),
+root = pyrootutils.setup_root(search_from=__file__, pythonpath=True)
+
+from src.models.diffusion import ImageDiffusionGenerator
+
+path = (
+    "/home/users/l/leighm/scratch/Saved_Networks/image_processing/"
+    "afhqv2_64_with_pos_enc/checkpoints/last.ckpt"
 )
-model = model.to("cuda")
+full_ckpt = ImageDiffusionGenerator.load_from_checkpoint(path)
+net = full_ckpt.net
 
-torch.set_float32_matmul_precision("medium")
+ema_net = full_ckpt.sigma_function.keywords["n_steps"]
+sigma_encoder = full_ckpt.sigma_encoder
+normaliser = full_ckpt.normaliser
+ctxt_normaliser = getattr(full_ckpt, "ctxt_normaliser", None)
 
-model = torch.compile(model, mode="default")
 
-model(torch.randn((12, 12), device="cuda"))
-print("yay")
+del full_ckpt
+print(net)

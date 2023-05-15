@@ -1,0 +1,28 @@
+# @package _global_
+
+defaults:
+  - override /datamodule: animals.yaml
+  - override /model: consistancy.yaml
+datamodule:
+  loader_config:
+    batch_size: 128
+    num_workers: 8
+
+# loggers:
+#   wandb:
+#     offline: True
+
+trainer:
+  precision: 16-mixed
+  # strategy: ddp_find_unused_parameters_true # For ddp to allow ema networks
+
+# For faster setup
+precision: medium
+compile: null
+
+# Required for image loading
+resize: 80
+crop_size: 64
+
+project_name: image_processing
+network_name: afhqv2_64_consistancy_no_teacher

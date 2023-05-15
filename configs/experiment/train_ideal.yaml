@@ -1,26 +1,32 @@
 # @package _global_
 
 defaults:
-  # - override /datamodule: animals.yaml
   - override /datamodule: cifar10.yaml
+  # - override /datamodule: animals.yaml
+  - override /model: ideal.yaml
 
 datamodule:
   loader_config:
-    batch_size: 32
+    batch_size: 256
     num_workers: 8
 
+# loggers:
+#   wandb:
+#     offline: True
+
 trainer:
-  precision: 32 #16-mixed
+  precision: 32
   # strategy: ddp_find_unused_parameters_true # For ddp to allow ema networks
+  accelerator: auto
+  devices: auto
 
 # For faster setup
 precision: high
 compile: null
 
 # Required for image loading
-# resize: 140
-# crop_size: 128
+resize: 80
+crop_size: 64
 
 project_name: image_processing
-network_name: cifar
-# ckpt_path: /home/users/l/leighm/scratch/Saved_Networks/image_processing/afhqv2_64_with_pos_enc/checkpoints/last.ckpt
+network_name: cifar10_ideal

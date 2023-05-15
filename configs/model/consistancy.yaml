@@ -1,0 +1,33 @@
+_target_: src.models.consistancy.ConsistancyImageGenerator
+
+teacher_checkpoint:  /home/users/l/leighm/scratch/Saved_Networks/image_processing/afhqv2_64_new_cnn/checkpoints/last-v1.ckpt
+
+loss_name: mse
+min_sigma: 0.002
+max_sigma: 80
+ema_sync: 0.95
+n_gen_steps: 3
+
+# Sigma function to determine the training steps
+sigma_function:
+  _target_: mattstools.mattstools.k_diffusion.get_sigmas_karras
+  _partial_: True
+  n_steps: 20
+  rho: 7
+
+# Full configuration for the model optimizer
+optimizer:
+  _target_: torch.optim.RAdam
+  _partial_: true
+  lr: 1.0e-4
+  weight_decay: 0
+
+# Config dicts to pass to mattstools and pytorch lightning
+sched_config:
+  mattstools:
+    name: warmup
+    num_steps: 100
+  lightning:
+    monitor: valid/total_loss
+    interval: step
+    frequency: 1

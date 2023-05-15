@@ -5,16 +5,20 @@ from typing import Callable, Mapping, Tuple
 import pytorch_lightning as pl
 import torch as T
 import wandb
-from torchvision.utils import make_grid
+from torchvision.utils import make_grid, save_image
 
 from mattstools.mattstools.cnns import UNet
+from mattstools.mattstools.k_diffusion import (
+    multistep_consistency_sampling,
+    one_step_ideal_heun,
+)
 from mattstools.mattstools.modules import CosineEncoding, IterativeNormLayer
-from mattstools.mattstools.torch_utils import get_loss_fn, get_sched
+from mattstools.mattstools.torch_utils import ema_param_sync, get_loss_fn, get_sched
 
 
-class ImageDiffusionGenerator(pl.LightningModule):
-    """A generative model which uses the diffusion process on an image
-    input."""
+class MinibatchIdealDenoiser(pl.LightningModule):
+    """A generative model which uses the uses the ideal denoiser of a minibatch
+    of data and consistancy learning."""
 
     def __init__(
         self,
@@ -23,18 +27,16 @@ class ImageDiffusionGenerator(pl.LightningModule):
         cosine_config: Mapping,
         normaliser_config: Mapping,
         unet_config: Mapping,
+        sigma_function: Callable,
         optimizer: partial,
         sched_config: Mapping,
         use_ctxt: bool = True,
         use_ctxt_img: bool = False,
         loss_name: str = "mse",
-        min_sigma: float = 0,
+        min_sigma: float = 0.001,
         max_sigma: float = 80.0,
         ema_sync: float = 0.999,
-        p_mean: float = -1.2,
-        p_std: float = 1.2,
-        sampler_function: Callable | None = None,
-        sigma_function: Callable | None = None,
+        n_gen_steps: int = 3,
     ) -> None:
         """
         Parameters:
@@ -48,6 +50,10 @@ class ImageDiffusionGenerator(pl.LightningModule):
             normalization layer.
         unet_config : Mapping
             A dictionary containing the configuration settings for the UNet.
+        sampler_function : callable
+            Callable sampler function to use during the generation steps
+        sigma_function : callable
+            Callable function for calculating the sigma steps for generation
         optimizer : partial
             The optimizer function used to optimize the neural network.
         sched_config : Mapping
@@ -68,17 +74,12 @@ class ImageDiffusionGenerator(pl.LightningModule):
             Default is 80.0.
         ema_sync : float, optional
             The exponential moving average sync value. Default is 0.999.
-        p_mean : float, optional
-            The mean value used for the sigma distribution during training.
-            Default is -1.2.
         p_std : float, optional
             The standard deviation value used for the sigma distribution during
             training.
             Default is 1.2.
-        sampler_function : callable
-            Callable sampler function to use during the generation steps
-        sigma_function : callable
-            Callable function for calculating the sigma steps for generation
+        n_gen_steps:
+            The number of steps used to generate the samples. Default is 3
         """
 
         super().__init__()
@@ -94,10 +95,9 @@ class ImageDiffusionGenerator(pl.LightningModule):
         self.ema_sync = ema_sync
         self.min_sigma = min_sigma
         self.max_sigma = max_sigma
-        self.p_mean = p_mean
-        self.p_std = p_std
         self.use_ctxt = use_ctxt
         self.use_ctxt_img = use_ctxt_img
+        self.n_gen_steps = n_gen_steps
 
         # The encoder and scheduler needed for diffusion
         self.sigma_encoder = CosineEncoding(
@@ -114,7 +114,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
             )
 
         # The base UNet
-        self.net = UNet(
+        self.online_net = UNet(
             inpt_size=self.inpt_dim[1:],
             inpt_channels=self.inpt_dim[0] + self.ctxt_img_dim[0],
             outp_channels=self.inpt_dim[0],
@@ -123,13 +123,14 @@ class ImageDiffusionGenerator(pl.LightningModule):
         )
 
         # A copy of the network which will sync with an exponential moving average
-        if ema_sync:
-            self.ema_net = copy.deepcopy(self.net)
-            self.ema_net.requires_grad_(False)
+        self.ema_net = copy.deepcopy(self.online_net)
+        self.ema_net.requires_grad_(False)
+        self.ema_net.eval()
 
-        # Sampler to run in the validation/testing loop
-        self.sampler_function = sampler_function
+        # Sampler to use for generation with ideal denoiser
         self.sigma_function = sigma_function
+        self.fixed_sigmas = self.sigma_function(self.max_sigma, self.min_sigma)
+        self.n_steps = len(self.fixed_sigmas)
 
         # Initial noise for running the visualisation at the end of the epoch
         self.n_visualise = 5
@@ -138,12 +139,15 @@ class ImageDiffusionGenerator(pl.LightningModule):
         )
 
     def get_c_values(self, sigmas: T.Tensor) -> tuple:
-        """Calculate the c values needed for the I/O."""
+        """Calculate the c values needed for the I/O.
 
-        # Ee use cos encoding so we dont need c_noise
+        Note the extra min_sigma term needed for the consistancy models
+        """
+
+        # We use cos encoding so we dont need c_noise
         c_in = 1 / (1 + sigmas**2).sqrt()
-        c_out = sigmas / (1 + sigmas**2).sqrt()
-        c_skip = 1 / (1 + sigmas**2)
+        c_out = (sigmas - self.min_sigma) / (1 + sigmas**2).sqrt()
+        c_skip = 1 / (1 + (sigmas - self.min_sigma) ** 2)
 
         return c_in, c_out, c_skip
 
@@ -153,6 +157,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
         sigmas: T.Tensor,
         ctxt: T.Tensor | None = None,
         ctxt_img: T.Tensor | None = None,
+        use_ema: bool = False,
     ) -> T.Tensor:
         """Return the denoised data from a given sigma value."""
 
@@ -160,7 +165,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
         c_in, c_out, c_skip = self.get_c_values(sigmas.view(-1, 1, 1, 1))
 
         # Scale the inputs and pass through the network
-        outputs = self.get_outputs(c_in * noisy_data, sigmas, ctxt, ctxt_img)
+        outputs = self.get_outputs(c_in * noisy_data, sigmas, ctxt, ctxt_img, use_ema)
 
         # Get the denoised output by passing the scaled input through the network
         return c_skip * noisy_data + c_out * outputs
@@ -171,13 +176,14 @@ class ImageDiffusionGenerator(pl.LightningModule):
         sigmas: T.Tensor,
         ctxt: T.Tensor | None = None,
         ctxt_img: T.Tensor | None = None,
+        use_ema: bool = False,
     ) -> T.Tensor:
         """Pass through the model, corresponds to F_theta in the Karras
         paper."""
 
         # Use the appropriate network for training or validation
-        if self.training or not self.ema_sync:
-            network = self.net
+        if self.training and not use_ema:
+            network = self.online_net
         else:
             network = self.ema_net
 
@@ -206,33 +212,45 @@ class ImageDiffusionGenerator(pl.LightningModule):
         if self.ctxt_dim:
             ctxt = self.ctxt_normaliser(ctxt)
 
-        # Sample sigmas using the Karras method of a log normal distribution
-        sigmas = T.zeros(size=(data.shape[0], 1), device=self.device)
-        sigmas.add_(self.p_mean + self.p_std * T.randn_like(sigmas))
-        sigmas.exp_().clamp_(self.min_sigma, self.max_sigma)
+        # Sample the discrete timesteps for which to learn
+        n = T.randint(low=0, high=self.n_steps - 1, size=(data.shape[0],))
 
-        # Get the c values for the data scaling
-        c_in, c_out, c_skip = self.get_c_values(sigmas.view(-1, 1, 1, 1))
+        # Get the sigma values for these times
+        sigma_start = self.fixed_sigmas[n].to(self.device)
+        sigma_end = self.fixed_sigmas[n + 1].to(self.device)  # Sigmas are decreasing!
 
         # Sample from N(0, sigma**2)
-        noises = T.randn_like(data) * sigmas.view(-1, 1, 1, 1)
+        noises = T.randn_like(data) * sigma_start.view(-1, 1, 1, 1)
 
         # Make the noisy samples by mixing with the real data
         noisy_data = data + noises
 
-        # Pass through the just the base network (manually scale with c values)
-        output = self.get_outputs(c_in * noisy_data, sigmas, ctxt, ctxt_img)
+        # Get the denoised estimate from the network
+        denoised_data = self.forward(noisy_data, sigma_start, ctxt, ctxt_img)
 
-        # Calculate the effective training target
-        target = (data - c_skip * noisy_data) / c_out
+        # Do one step of the heun method to get the next part of the ODE
+        with T.no_grad():
+            next_data = one_step_ideal_heun(
+                noisy_data,
+                data,
+                sigma_start,
+                sigma_end,
+                self.min_sigma,
+            )
 
-        # Return the denoising loss
-        return self.loss_fn(output, target).mean()
+            # Get the denoised estimate for the next data using the ema network
+            self.ema_net.eval()
+            denoised_next = self.forward(
+                next_data, sigma_end, ctxt, ctxt_img, use_ema=True
+            ).detach()
+
+        # Return the consistancy loss
+        return self.loss_fn(denoised_data, denoised_next).mean()
 
     def training_step(self, sample: tuple, _batch_idx: int) -> T.Tensor:
         loss = self._shared_step(sample)
         self.log("train/total_loss", loss)
-        self._sync_ema_network()
+        ema_param_sync(self.online_net, self.ema_net, self.ema_sync)
         return loss
 
     def validation_step(self, sample: tuple, batch_idx: int) -> None:
@@ -240,12 +258,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
         self.log("valid/total_loss", loss)
 
         # For only the first batch if the logger is running
-        if (
-            batch_idx == 0
-            and wandb.run is not None
-            and self.sampler_function is not None
-            and self.sigma_function is not None
-        ):
+        if batch_idx == 0 and wandb.run is not None:
             # Unpack the context from the sample tuple
             ctxt = sample[1][: self.n_visualise]
             ctxt_img = sample[2][: self.n_visualise] if len(sample) > 2 else None
@@ -256,19 +269,8 @@ class ImageDiffusionGenerator(pl.LightningModule):
                 ctxt=ctxt,
                 ctxt_img=ctxt_img,
             )
+            save_image(gen_images, "/home/users/l/leighm/ImageProcessing/cnctncy.png")
             wandb.log({"images": wandb.Image(make_grid(gen_images))}, commit=False)
-
-    @T.no_grad()
-    def _sync_ema_network(self) -> None:
-        """Updates the Exponential Moving Average Network."""
-        if self.ema_sync:
-            for params, ema_params in zip(
-                self.net.parameters(), self.ema_net.parameters()
-            ):
-                ema_params.data.copy_(
-                    self.ema_sync * ema_params.data
-                    + (1.0 - self.ema_sync) * params.data
-                )
 
     def on_fit_start(self, *_args) -> None:
         """Function to run at the start of training."""
@@ -293,15 +295,20 @@ class ImageDiffusionGenerator(pl.LightningModule):
             ctxt = self.ctxt_normaliser(ctxt)
             assert len(ctxt) == len(initial_noise)
 
-        # Generate the sigma values
-        sigmas = self.sigma_function(self.max_sigma, self.min_sigma)
+        # Get which values are going to be selected for the generation
+        sigmas = T.quantile(
+            self.fixed_sigmas,
+            T.linspace(1, 1 / self.n_gen_steps, self.n_gen_steps),
+            interpolation="nearest",
+        ).to(self.device)
 
-        # Run the sampler
-        outputs, _ = self.sampler_function(
+        # Do a single step generation
+        outputs = multistep_consistency_sampling(
             model=self,
-            x=initial_noise,
             sigmas=sigmas,
-            extra_args={"ctxt": ctxt, "ctxt_img": ctxt_img},
+            min_sigma=self.min_sigma,
+            x=initial_noise,
+            extra_args={"ctxt": ctxt, "ctxt_img": ctxt_img, "use_ema": True},
         )
 
         # Return the output
@@ -312,7 +319,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
         model."""
 
         # Finish initialising the partialy created methods
-        opt = self.hparams.optimizer(params=self.net.parameters())
+        opt = self.hparams.optimizer(params=self.online_net.parameters())
 
         # Use mattstools to initialise the scheduler (cyclic-epoch sync)
         sched = get_sched(

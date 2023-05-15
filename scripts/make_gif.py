@@ -6,7 +6,7 @@ from PIL import Image
 from tqdm import tqdm
 
 api = wandb.Api()
-run = api.run("mleigh/image_processing/runs/97lxcf88")
+run = api.run("mleigh/image_processing/runs/tayfnmiu")
 file_wilcards = "*images_*_*.png"
 image_path = "/home/users/l/leighm/ImageProcessing/"
 prefix = "media/images/"

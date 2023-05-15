@@ -1,23 +1,17 @@
-_target_: src.models.diffusion.ImageDiffusionGenerator
+_target_: src.models.ideal.MinibatchIdealDenoiser
 
 use_ctxt: False
 use_ctxt_img: False
-loss_name: mse
-min_sigma: 0.001
+loss_name: mae
+min_sigma: 0.002
 max_sigma: 80
-ema_sync: 0.9999
-p_mean: -1.2
-p_std: 1.2
+ema_sync: 0.99
 
-# Sampler and noise schedule for the generation
-sampler_function:
-  _target_: mattstools.mattstools.k_diffusion.sample_heun
-  _partial_: True
-
+# Noise schedule for the generation
 sigma_function:
   _target_: mattstools.mattstools.k_diffusion.get_sigmas_karras
   _partial_: True
-  n_steps: 100
+  n_steps: 18
   rho: 7
 
 cosine_config:
@@ -29,29 +23,29 @@ normaliser_config:
 
 # Full UNet Model
 unet_config:
-  min_size: 8
-  attn_below: 16
-  start_channels: 128
-  max_channels: 256
-  zero_out: False
+  min_size: 4
+  attn_below: 8
+  start_channels: 64
+  max_channels: 64
+  zero_out: True
   resnet_config:
     act: silu
     drp: 0.1
     nrm_groups: 16
   attn_config:
     num_heads: 16
-    nrm_groups: 16
+    nrm_groups: 8
     pos_encoding_dim: 8
 
   ctxt_embed_config:
     act_h: silu
     hddn_dim: 128
-    num_blocks: 3
+    num_blocks: 2
     nrm: layer
 
 # Full configuration for the model optimizer
 optimizer:
-  _target_: torch.optim.AdamW
+  _target_: torch.optim.RAdam
   _partial_: true
   lr: 1.0e-4
   weight_decay: 0
@@ -60,7 +54,7 @@ optimizer:
 sched_config:
   mattstools:
     name: warmup
-    num_steps: 2_00_000
+    num_steps: 100
   lightning:
     monitor: valid/total_loss
     interval: step

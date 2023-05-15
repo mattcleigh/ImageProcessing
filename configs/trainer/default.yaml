@@ -8,7 +8,7 @@ precision: 32
 check_val_every_n_epoch: 1
 accelerator: auto
 devices: auto
-num_nodes : 1
+num_nodes: 1
 
 # Interpolated
 default_root_dir: ${paths.full_path}

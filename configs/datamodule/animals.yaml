@@ -20,7 +20,6 @@ train_set:
           _target_: mattstools.mattstools.torch_utils.dtype_lookup
           dtype: float
 
-
 test_set:
   _target_: torchvision.datasets.ImageFolder
   _partial_: True
