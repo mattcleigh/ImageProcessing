@@ -37,7 +37,7 @@ class ConsistancyTrainedDenoiser(pl.LightningModule):
         ema_sync: float = 0.999,
         p_mean: float = -1.2,
         p_std: float = 1.2,
-        n_gen_steps: int = 3,
+        n_gen_steps: int = 5,
     ) -> None:
         """
         Parameters:
