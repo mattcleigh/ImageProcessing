@@ -5,7 +5,7 @@ from typing import Callable, Mapping, Tuple
 import pytorch_lightning as pl
 import torch as T
 import wandb
-from torchvision.utils import make_grid, save_image
+from torchvision.utils import make_grid
 
 from mattstools.mattstools.cnns import UNet
 from mattstools.mattstools.k_diffusion import (
@@ -274,7 +274,6 @@ class ConsistancyTrainedDenoiser(pl.LightningModule):
                 ctxt=ctxt,
                 ctxt_img=ctxt_img,
             )
-            save_image(gen_images, "/home/users/l/leighm/ImageProcessing/cnctncy.png")
             wandb.log({"images": wandb.Image(make_grid(gen_images))}, commit=False)
 
     def on_fit_start(self, *_args) -> None:
