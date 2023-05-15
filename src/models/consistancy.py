@@ -5,11 +5,11 @@ from typing import Callable, Mapping, Tuple
 import pytorch_lightning as pl
 import torch as T
 import wandb
-from torchvision.utils import make_grid, save_image
+from torchvision.utils import make_grid
 
 from mattstools.mattstools.k_diffusion import (
     multistep_consistency_sampling,
-    one_step_ideal_heun,
+    one_step_heun,
 )
 from mattstools.mattstools.torch_utils import ema_param_sync, get_loss_fn, get_sched
 from src.models.diffusion import ImageDiffusionGenerator
@@ -179,12 +179,12 @@ class ConsistancyImageGenerator(pl.LightningModule):
         # Do one step of the heun method to get the next part of the ODE
         with T.no_grad():
             self.teacher_net.eval()
-            next_data = one_step_ideal_heun(
+            next_data = one_step_heun(
+                self.teacher_net,
                 noisy_data,
-                data,
                 sigma_start,
                 sigma_end,
-                # extra_args={"ctxt": ctxt, "ctxt_img": ctxt_img}
+                extra_args={"ctxt": ctxt, "ctxt_img": ctxt_img},
             )
 
             # Get the denoised estimate for the next data using the ema network
@@ -218,7 +218,6 @@ class ConsistancyImageGenerator(pl.LightningModule):
                 ctxt=ctxt,
                 ctxt_img=ctxt_img,
             )
-            save_image(gen_images, "/home/users/l/leighm/ImageProcessing/cnctncy.png")
             wandb.log({"images": wandb.Image(make_grid(gen_images))}, commit=False)
 
     def on_fit_start(self, *_args) -> None:

@@ -9,16 +9,15 @@ from torchvision.utils import make_grid, save_image
 
 from mattstools.mattstools.cnns import UNet
 from mattstools.mattstools.k_diffusion import (
+    append_dims,
     multistep_consistency_sampling,
-    one_step_ideal_heun,
 )
 from mattstools.mattstools.modules import CosineEncoding, IterativeNormLayer
 from mattstools.mattstools.torch_utils import ema_param_sync, get_loss_fn, get_sched
 
 
-class MinibatchIdealDenoiser(pl.LightningModule):
-    """A generative model which uses the uses the ideal denoiser of a minibatch
-    of data and consistancy learning."""
+class ConsistancyTrainedDenoiser(pl.LightningModule):
+    """A generative model which uses the uses the CT learning objective."""
 
     def __init__(
         self,
@@ -36,6 +35,8 @@ class MinibatchIdealDenoiser(pl.LightningModule):
         min_sigma: float = 0.001,
         max_sigma: float = 80.0,
         ema_sync: float = 0.999,
+        p_mean: float = -1.2,
+        p_std: float = 1.2,
         n_gen_steps: int = 3,
     ) -> None:
         """
@@ -98,6 +99,8 @@ class MinibatchIdealDenoiser(pl.LightningModule):
         self.use_ctxt = use_ctxt
         self.use_ctxt_img = use_ctxt_img
         self.n_gen_steps = n_gen_steps
+        self.p_mean = p_mean
+        self.p_std = p_std
 
         # The encoder and scheduler needed for diffusion
         self.sigma_encoder = CosineEncoding(
@@ -212,40 +215,42 @@ class MinibatchIdealDenoiser(pl.LightningModule):
         if self.ctxt_dim:
             ctxt = self.ctxt_normaliser(ctxt)
 
-        # Sample the discrete timesteps for which to learn
-        n = T.randint(low=0, high=self.n_steps - 1, size=(data.shape[0],))
+        # Sample sigmas using the Karras method of a log normal distribution
+        sigmas = T.zeros(size=(data.shape[0], 1), device=self.device)
+        sigmas.add_(self.p_mean + self.p_std * T.randn_like(sigmas))
+        sigmas.exp_().clamp_(self.min_sigma, self.max_sigma)
 
-        # Get the sigma values for these times
-        sigma_start = self.fixed_sigmas[n].to(self.device)
-        sigma_end = self.fixed_sigmas[n + 1].to(self.device)  # Sigmas are decreasing!
+        # Sample the timesteps from the distribution
+        dsig = -T.rand_like(sigmas) * sigmas
+        dsig.clamp_(self.min_sigma - sigmas)
 
-        # Sample from N(0, sigma**2)
-        noises = T.randn_like(data) * sigma_start.view(-1, 1, 1, 1)
+        # Use the timesteps to get the next sigmas
+        next_sigmas = sigmas + dsig
+
+        # Get expanded versions for the calculations
+        s = append_dims(sigmas, data.dim())
+        ns = append_dims(next_sigmas, data.dim())
+
+        # Sample from N(0, 1), need to save the noise
+        noises = T.randn_like(data)
 
         # Make the noisy samples by mixing with the real data
-        noisy_data = data + noises
+        noisy_data = data + noises * s
 
-        # Get the denoised estimate from the network
-        denoised_data = self.forward(noisy_data, sigma_start, ctxt, ctxt_img)
+        # Get the next iteration (comes from the one step heun estimate)
+        next_it = data + noises * ns
+        # next_it = one_step_ideal_heun(noisy_data, data, sigmas, next_sigmas)
 
-        # Do one step of the heun method to get the next part of the ODE
+        # Pass the noisy data through the network
+        out = self.forward(noisy_data, sigmas, ctxt, ctxt_img)
+
+        # Get the estimates for the next iteration using the target network
         with T.no_grad():
-            next_data = one_step_ideal_heun(
-                noisy_data,
-                data,
-                sigma_start,
-                sigma_end,
-                self.min_sigma,
-            )
-
-            # Get the denoised estimate for the next data using the ema network
             self.ema_net.eval()
-            denoised_next = self.forward(
-                next_data, sigma_end, ctxt, ctxt_img, use_ema=True
-            ).detach()
+            out_next = self.forward(next_it, next_sigmas, ctxt, ctxt_img, use_ema=True)
 
         # Return the consistancy loss
-        return self.loss_fn(denoised_data, denoised_next).mean()
+        return self.loss_fn(out, out_next).mean()
 
     def training_step(self, sample: tuple, _batch_idx: int) -> T.Tensor:
         loss = self._shared_step(sample)

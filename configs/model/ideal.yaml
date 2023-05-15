@@ -1,11 +1,13 @@
-_target_: src.models.ideal.MinibatchIdealDenoiser
+_target_: src.models.ct.ConsistancyTrainedDenoiser
 
 use_ctxt: False
 use_ctxt_img: False
-loss_name: mae
+loss_name: mse
 min_sigma: 0.002
 max_sigma: 80
 ema_sync: 0.99
+p_mean: -1.2
+p_std: 1.2
 
 # Noise schedule for the generation
 sigma_function:
@@ -27,7 +29,7 @@ unet_config:
   attn_below: 8
   start_channels: 64
   max_channels: 64
-  zero_out: True
+  zero_out: False
   resnet_config:
     act: silu
     drp: 0.1

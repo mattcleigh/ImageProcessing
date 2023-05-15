@@ -3,7 +3,7 @@
 defaults:
   - override /datamodule: cifar10.yaml
   # - override /datamodule: animals.yaml
-  - override /model: ideal.yaml
+  - override /model: ct.yaml
 
 datamodule:
   loader_config:
@@ -15,18 +15,14 @@ datamodule:
 #     offline: True
 
 trainer:
-  precision: 32
+  precision: 16-mixed
   # strategy: ddp_find_unused_parameters_true # For ddp to allow ema networks
-  accelerator: auto
+  accelerator: gpu
   devices: auto
 
 # For faster setup
-precision: high
+precision: medium
 compile: null
 
-# Required for image loading
-resize: 80
-crop_size: 64
-
 project_name: image_processing
-network_name: cifar10_ideal
+network_name: cifar10_ct
