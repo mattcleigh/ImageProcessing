@@ -8,6 +8,7 @@ import wandb
 from torchvision.utils import make_grid
 
 from mattstools.mattstools.cnns import UNet
+from mattstools.mattstools.k_diffusion import append_dims
 from mattstools.mattstools.modules import CosineEncoding, IterativeNormLayer
 from mattstools.mattstools.torch_utils import get_loss_fn, get_sched
 
@@ -140,7 +141,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
     def get_c_values(self, sigmas: T.Tensor) -> tuple:
         """Calculate the c values needed for the I/O."""
 
-        # Ee use cos encoding so we dont need c_noise
+        # We use cos encoding so we dont need c_noise
         c_in = 1 / (1 + sigmas**2).sqrt()
         c_out = sigmas / (1 + sigmas**2).sqrt()
         c_skip = 1 / (1 + sigmas**2)
@@ -157,7 +158,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
         """Return the denoised data from a given sigma value."""
 
         # Get the c values for the data scaling
-        c_in, c_out, c_skip = self.get_c_values(sigmas.view(-1, 1, 1, 1))
+        c_in, c_out, c_skip = self.get_c_values(append_dims(sigmas, noisy_data.dim()))
 
         # Scale the inputs and pass through the network
         outputs = self.get_outputs(c_in * noisy_data, sigmas, ctxt, ctxt_img)

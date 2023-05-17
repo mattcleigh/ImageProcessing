@@ -7,8 +7,8 @@ defaults:
 
 datamodule:
   loader_config:
-    batch_size: 256
-    num_workers: 8
+    batch_size: 1024
+    num_workers: 2
 
 # loggers:
 #   wandb:
@@ -16,12 +16,11 @@ datamodule:
 
 trainer:
   precision: 16-mixed
-  # strategy: ddp_find_unused_parameters_true # For ddp to allow ema networks
-  accelerator: gpu
+  accelerator: auto
   devices: auto
 
 # For faster setup
-precision: medium
+precision: high
 compile: null
 
 project_name: image_processing

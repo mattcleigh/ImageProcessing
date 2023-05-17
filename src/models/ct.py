@@ -11,6 +11,7 @@ from mattstools.mattstools.cnns import UNet
 from mattstools.mattstools.k_diffusion import (
     append_dims,
     multistep_consistency_sampling,
+    one_step_ideal_heun,
 )
 from mattstools.mattstools.modules import CosineEncoding, IterativeNormLayer
 from mattstools.mattstools.torch_utils import ema_param_sync, get_loss_fn, get_sched
@@ -229,7 +230,7 @@ class ConsistancyTrainedDenoiser(pl.LightningModule):
 
         # Get expanded versions for the calculations
         s = append_dims(sigmas, data.dim())
-        ns = append_dims(next_sigmas, data.dim())
+        # ns = append_dims(next_sigmas, data.dim())
 
         # Sample from N(0, 1), need to save the noise
         noises = T.randn_like(data)
@@ -238,8 +239,8 @@ class ConsistancyTrainedDenoiser(pl.LightningModule):
         noisy_data = data + noises * s
 
         # Get the next iteration (comes from the one step heun estimate)
-        next_it = data + noises * ns
-        # next_it = one_step_ideal_heun(noisy_data, data, sigmas, next_sigmas)
+        # next_it = data + noises * ns
+        next_it = one_step_ideal_heun(noisy_data, data, sigmas, next_sigmas)
 
         # Pass the noisy data through the network
         out = self.forward(noisy_data, sigmas, ctxt, ctxt_img)
