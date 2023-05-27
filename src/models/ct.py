@@ -5,13 +5,14 @@ from typing import Callable, Mapping, Tuple
 import pytorch_lightning as pl
 import torch as T
 import wandb
+from torchmetrics.image.fid import FrechetInceptionDistance
 from torchvision.utils import make_grid
 
 from mattstools.mattstools.cnns import UNet
 from mattstools.mattstools.k_diffusion import (
     append_dims,
     multistep_consistency_sampling,
-    one_step_ideal_heun,
+    one_step_ideal,
 )
 from mattstools.mattstools.modules import CosineEncoding, IterativeNormLayer
 from mattstools.mattstools.torch_utils import ema_param_sync, get_loss_fn, get_sched
@@ -142,6 +143,9 @@ class ConsistancyTrainedDenoiser(pl.LightningModule):
             T.randn((self.n_visualise, *self.inpt_dim)) * self.max_sigma
         )
 
+        # For calculating the FID scores
+        self.fid = FrechetInceptionDistance(normalize=True)
+
     def get_c_values(self, sigmas: T.Tensor) -> tuple:
         """Calculate the c values needed for the I/O.
 
@@ -216,31 +220,20 @@ class ConsistancyTrainedDenoiser(pl.LightningModule):
         if self.ctxt_dim:
             ctxt = self.ctxt_normaliser(ctxt)
 
-        # Sample sigmas using the Karras method of a log normal distribution
-        sigmas = T.zeros(size=(data.shape[0], 1), device=self.device)
-        sigmas.add_(self.p_mean + self.p_std * T.randn_like(sigmas))
-        sigmas.exp_().clamp_(self.min_sigma, self.max_sigma)
-
-        # Sample the timesteps from the distribution
-        dsig = -T.rand_like(sigmas) * sigmas
-        dsig.clamp_(self.min_sigma - sigmas)
-
-        # Use the timesteps to get the next sigmas
-        next_sigmas = sigmas + dsig
-
-        # Get expanded versions for the calculations
-        s = append_dims(sigmas, data.dim())
-        # ns = append_dims(next_sigmas, data.dim())
+        # Get some fixed sigma values
+        n = T.randint(low=0, high=self.n_steps - 1, size=(data.shape[0],))
+        sigmas = self.fixed_sigmas[n].to(self.device)
+        next_sigmas = self.fixed_sigmas[n + 1].to(self.device)  # Sigmas are decreasing!
 
         # Sample from N(0, 1), need to save the noise
         noises = T.randn_like(data)
 
         # Make the noisy samples by mixing with the real data
-        noisy_data = data + noises * s
+        noisy_data = data + noises * append_dims(sigmas, data.dim())
 
-        # Get the next iteration (comes from the one step heun estimate)
-        # next_it = data + noises * ns
-        next_it = one_step_ideal_heun(noisy_data, data, sigmas, next_sigmas)
+        # Get the next iteration (comes from the one step euler estimate)
+        # next_it = data + noises * append_dims(next_sigmas, data.dim())
+        next_it = one_step_ideal(noisy_data, data, sigmas, next_sigmas)
 
         # Pass the noisy data through the network
         out = self.forward(noisy_data, sigmas, ctxt, ctxt_img)
@@ -263,19 +256,41 @@ class ConsistancyTrainedDenoiser(pl.LightningModule):
         loss = self._shared_step(sample)
         self.log("valid/total_loss", loss)
 
-        # For only the first batch if the logger is running
-        if batch_idx == 0 and wandb.run is not None:
-            # Unpack the context from the sample tuple
-            ctxt = sample[1][: self.n_visualise]
-            ctxt_img = sample[2][: self.n_visualise] if len(sample) > 2 else None
+        # Unpack the sample tuple and fully generate a batch
+        data = sample[0]
+        ctxt = sample[1]
+        ctxt_img = sample[2] if len(sample) > 2 else None
 
-            # Run the full generation
+        # Only if there is the logger
+        if wandb.run is not None:
+
+            # Fully generate a batch
             gen_images = self.full_generation(
-                initial_noise=self.initial_noise.to(self.device),
+                initial_noise=T.randn_like(data),
                 ctxt=ctxt,
                 ctxt_img=ctxt_img,
-            )
-            wandb.log({"images": wandb.Image(make_grid(gen_images))}, commit=False)
+            ).clamp(0, 1)
+
+            # Calculate the FID scores
+            self.fid.update(gen_images, real=False)
+            self.fid.update(data, real=True)
+
+            # Generate some visualisations using the initial noise
+            if batch_idx == 0:
+                # Unpack the context from the sample tuple
+                ctxt = sample[1][: self.n_visualise]
+                ctxt_img = sample[2][: self.n_visualise] if len(sample) > 2 else None
+                # Run the full generation
+                gen_images = self.full_generation(
+                    initial_noise=self.initial_noise.to(self.device),
+                    ctxt=ctxt,
+                    ctxt_img=ctxt_img,
+                )
+                wandb.log({"images": wandb.Image(make_grid(gen_images))}, commit=False)
+
+    def on_validation_epoch_end(self) -> None:
+        wandb.log({"FID": self.fid.compute()}, commit=False)
+        self.fid.reset()
 
     def on_fit_start(self, *_args) -> None:
         """Function to run at the start of training."""

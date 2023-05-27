@@ -1,26 +1,28 @@
 # @package _global_
 
 defaults:
-  # - override /datamodule: animals.yaml
-  - override /datamodule: cifar10.yaml
+  - override /datamodule: fashion_mnist.yaml
 
 datamodule:
   loader_config:
-    batch_size: 32
+    batch_size: 256
     num_workers: 8
 
 trainer:
-  precision: 32 #16-mixed
-  # strategy: ddp_find_unused_parameters_true # For ddp to allow ema networks
+  precision: 32
 
 # For faster setup
 precision: high
 compile: null
 
 # Required for image loading
-# resize: 140
-# crop_size: 128
+resize: 32
+crop_size: 32
 
-project_name: image_processing
-network_name: cifar
-# ckpt_path: /home/users/l/leighm/scratch/Saved_Networks/image_processing/afhqv2_64_with_pos_enc/checkpoints/last.ckpt
+# Model modifications
+unet_config:
+  start_channels: 64
+  max_channels: 128
+
+project_name: fashion_image_processing
+network_name: generator

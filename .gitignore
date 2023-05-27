@@ -15,6 +15,7 @@ mpgan/
 media/
 
 # File types
+*.gif
 *.pyc
 *.ipynb
 *.out

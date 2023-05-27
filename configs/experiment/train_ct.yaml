@@ -2,26 +2,26 @@
 
 defaults:
   - override /datamodule: cifar10.yaml
-  # - override /datamodule: animals.yaml
   - override /model: ct.yaml
 
 datamodule:
   loader_config:
-    batch_size: 1024
-    num_workers: 2
+    batch_size: 256
+    num_workers: 8
 
-# loggers:
-#   wandb:
-#     offline: True
+# Required for image loading
+resize: 80
+crop_size: 64
 
 trainer:
   precision: 16-mixed
   accelerator: auto
   devices: auto
+  check_val_every_n_epoch: 10
 
 # For faster setup
-precision: high
+precision: medium
 compile: null
 
 project_name: image_processing
-network_name: cifar10_ct
+network_name: cifar10_ideal_batch
