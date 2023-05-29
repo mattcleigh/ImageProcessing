@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-  - override /datamodule: fashion_mnist.yaml
+  - override /datamodule: animals.yaml
 
 datamodule:
   loader_config:
@@ -9,20 +9,21 @@ datamodule:
     num_workers: 8
 
 trainer:
-  precision: 32
+  precision: 16-mixed
 
 # For faster setup
-precision: high
+precision: medium
 compile: null
 
 # Required for image loading
-resize: 32
-crop_size: 32
+resize: 64
+crop_size: 64
 
 # Model modifications
-unet_config:
-  start_channels: 64
-  max_channels: 128
+model:
+  unet_config:
+    start_channels: 32
+    max_channels: 256
 
-project_name: fashion_image_processing
-network_name: generator
+project_name: image_processing
+network_name: fast_no_crop_generator

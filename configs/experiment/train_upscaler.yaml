@@ -10,6 +10,12 @@ datamodule:
   loader_config:
     batch_size: 32
 
+trainer:
+  check_val_every_n_epoch: 1
+
+resize: 140
+crop_size: 128
+
 # ckpt_path: /srv/beegfs/scratch/groups/rodem/jet_diffusion/checkpoints/pc_jedi/16_bit/checkpoints/last-v1.ckpt
 project_name: image_processing
-network_name: afhqv2_upscaler_128to256
+network_name: afhqv2_upscaler_16to128

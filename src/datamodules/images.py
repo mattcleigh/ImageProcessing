@@ -10,11 +10,11 @@ from torch.utils.data import DataLoader, Dataset
 class ImageUpscaleDataset(Dataset):
     """A class which returns the image and a downscaled copy for upscaling."""
 
-    def __init__(self, dataset: partial) -> None:
+    def __init__(self, dataset: partial, factor: int = 2) -> None:
         super().__init__()
         self.dataset = dataset()
-        self.downscaler = nn.AvgPool2d(2, 2)
-        self.upscaler = nn.Upsample(scale_factor=2)
+        self.downscaler = nn.AvgPool2d(factor, factor)
+        self.upscaler = nn.Upsample(scale_factor=factor)
 
     def __len__(self) -> int:
         return len(self.dataset)

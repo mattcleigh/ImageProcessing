@@ -10,7 +10,9 @@ from torchvision.utils import make_grid
 from mattstools.mattstools.cnns import UNet
 from mattstools.mattstools.k_diffusion import append_dims
 from mattstools.mattstools.modules import CosineEncoding, IterativeNormLayer
-from mattstools.mattstools.torch_utils import get_loss_fn, get_sched
+from mattstools.mattstools.torch_utils import ema_param_sync, get_loss_fn, get_sched
+
+# from torchmetrics.image.fid import FrechetInceptionDistance
 
 
 class ImageDiffusionGenerator(pl.LightningModule):
@@ -138,6 +140,9 @@ class ImageDiffusionGenerator(pl.LightningModule):
             T.randn((self.n_visualise, *self.inpt_dim)) * self.max_sigma
         )
 
+        # For calculating the FID scores
+        # self.fid = FrechetInceptionDistance(normalize=True)
+
     def get_c_values(self, sigmas: T.Tensor) -> tuple:
         """Calculate the c values needed for the I/O."""
 
@@ -213,10 +218,11 @@ class ImageDiffusionGenerator(pl.LightningModule):
         sigmas.exp_().clamp_(self.min_sigma, self.max_sigma)
 
         # Get the c values for the data scaling
-        c_in, c_out, c_skip = self.get_c_values(sigmas.view(-1, 1, 1, 1))
+        sigmas_with_dim = append_dims(sigmas, data.dim())
+        c_in, c_out, c_skip = self.get_c_values(sigmas_with_dim)
 
         # Sample from N(0, sigma**2)
-        noises = T.randn_like(data) * sigmas.view(-1, 1, 1, 1)
+        noises = T.randn_like(data) * sigmas_with_dim
 
         # Make the noisy samples by mixing with the real data
         noisy_data = data + noises
@@ -233,43 +239,49 @@ class ImageDiffusionGenerator(pl.LightningModule):
     def training_step(self, sample: tuple, _batch_idx: int) -> T.Tensor:
         loss = self._shared_step(sample)
         self.log("train/total_loss", loss)
-        self._sync_ema_network()
+        ema_param_sync(self.net, self.ema_net, self.ema_sync)
         return loss
 
     def validation_step(self, sample: tuple, batch_idx: int) -> None:
         loss = self._shared_step(sample)
         self.log("valid/total_loss", loss)
 
-        # For only the first batch if the logger is running
-        if (
-            batch_idx == 0
-            and wandb.run is not None
-            and self.sampler_function is not None
-            and self.sigma_function is not None
-        ):
-            # Unpack the context from the sample tuple
+        # Only if there is the logger
+        if wandb.run is not None and batch_idx == 0:
+
+            # # Unpack the sample tuple
+            # data = sample[0]
+            # ctxt = sample[1]
+            # ctxt_img = sample[2] if len(sample) > 2 else None
+
+            # # Fully generate a batch
+            # gen_images = self.full_generation(
+            #     initial_noise=T.randn_like(data),
+            #     ctxt=ctxt,
+            #     ctxt_img=ctxt_img,
+            # ).clamp(0, 1)
+
+            # # Calculate the FID scores
+            # self.fid.update(gen_images, real=False)
+            # self.fid.update(data, real=True)
+
+            # Generate only the first few samples
             ctxt = sample[1][: self.n_visualise]
             ctxt_img = sample[2][: self.n_visualise] if len(sample) > 2 else None
-
-            # Run the full generation
             gen_images = self.full_generation(
                 initial_noise=self.initial_noise.to(self.device),
                 ctxt=ctxt,
                 ctxt_img=ctxt_img,
             )
-            wandb.log({"images": wandb.Image(make_grid(gen_images))}, commit=False)
-
-    @T.no_grad()
-    def _sync_ema_network(self) -> None:
-        """Updates the Exponential Moving Average Network."""
-        if self.ema_sync:
-            for params, ema_params in zip(
-                self.net.parameters(), self.ema_net.parameters()
-            ):
-                ema_params.data.copy_(
-                    self.ema_sync * ema_params.data
-                    + (1.0 - self.ema_sync) * params.data
+            wandb.log({"gen_images": wandb.Image(make_grid(gen_images))}, commit=False)
+            if ctxt_img is not None:
+                wandb.log(
+                    {"ctxt_images": wandb.Image(make_grid(ctxt_img))}, commit=False
                 )
+
+    # def on_validation_epoch_end(self) -> None:
+    #     wandb.log({"FID": self.fid.compute()}, commit=False)
+    #     self.fid.reset()
 
     def on_fit_start(self, *_args) -> None:
         """Function to run at the start of training."""

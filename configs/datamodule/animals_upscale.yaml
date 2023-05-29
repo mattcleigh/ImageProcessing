@@ -4,6 +4,7 @@ _convert_: object
 train_set:
   _target_: src.datamodules.images.ImageUpscaleDataset
   _partial_: True
+  factor: 8
   dataset:
     _target_: torchvision.datasets.ImageFolder
     _partial_: True
@@ -13,9 +14,10 @@ train_set:
       transforms:
         - _target_: torchvision.transforms.PILToTensor
         - _target_: torchvision.transforms.Resize
-          size: 280
+          size: ${resize}
+          antialias: False
         - _target_: torchvision.transforms.RandomCrop
-          size: 256
+          size: ${crop_size}
         - _target_: torchvision.transforms.RandomHorizontalFlip
         - _target_: torchvision.transforms.ConvertImageDtype
           dtype:
@@ -25,6 +27,7 @@ train_set:
 test_set:
   _target_: ${..train_set._target_}
   _partial_: True
+  factor: ${..train_set.factor}
   dataset:
     _target_: ${...train_set.dataset._target_}
     _partial_: True
@@ -34,9 +37,10 @@ test_set:
       transforms:
         - _target_: torchvision.transforms.PILToTensor
         - _target_: torchvision.transforms.Resize
-          size: 280
+          size: ${resize}
+          antialias: False
         - _target_: torchvision.transforms.CenterCrop
-          size: 256
+          size: ${crop_size}
         - _target_: torchvision.transforms.ConvertImageDtype
           dtype:
             _target_: mattstools.mattstools.torch_utils.dtype_lookup

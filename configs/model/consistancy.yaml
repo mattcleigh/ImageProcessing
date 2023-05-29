@@ -1,11 +1,11 @@
 _target_: src.models.consistancy.ConsistancyImageGenerator
 
-teacher_checkpoint:  /home/users/l/leighm/scratch/Saved_Networks/image_processing/afhqv2_64_new_cnn/checkpoints/last-v1.ckpt
+teacher_checkpoint: /home/users/l/leighm/scratch/Saved_Networks/image_processing/afhqv2_64_new_cnn/checkpoints/last-v1.ckpt
 
 loss_name: mse
-min_sigma: 0.002
+min_sigma: 0.001
 max_sigma: 80
-ema_sync: 0.95
+ema_sync: 0.99
 n_gen_steps: 3
 
 # Sigma function to determine the training steps
@@ -26,7 +26,7 @@ optimizer:
 sched_config:
   mattstools:
     name: warmup
-    num_steps: 100
+    num_steps: 1000
   lightning:
     monitor: valid/total_loss
     interval: step
