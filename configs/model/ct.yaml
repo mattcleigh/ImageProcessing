@@ -18,8 +18,8 @@ sigma_function:
   rho: 7
 
 cosine_config:
-  outp_dim: 32
-  frequency_scaling: linear
+  outp_dim: 64
+  frequency_scaling: exponential
 
 normaliser_config:
   max_n: 100_000

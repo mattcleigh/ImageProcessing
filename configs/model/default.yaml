@@ -3,7 +3,7 @@ _target_: src.models.diffusion.ImageDiffusionGenerator
 use_ctxt: False
 use_ctxt_img: False
 loss_name: mse
-min_sigma: 0.001
+min_sigma: 0.002
 max_sigma: 80
 ema_sync: 0.999
 p_mean: -1.2
@@ -21,8 +21,8 @@ sigma_function:
   rho: 7
 
 cosine_config:
-  outp_dim: 64
-  frequency_scaling: linear
+  outp_dim: 32
+  frequency_scaling: exponential
 
 normaliser_config:
   max_n: 100_000
@@ -30,27 +30,28 @@ normaliser_config:
 # Full UNet Model
 unet_config:
   min_size: 8
-  attn_below: 32
-  start_channels: 64
+  attn_below: 16
+  start_channels: 128
   max_channels: 256
   zero_out: False
   n_blocks_per_layer: 1
 
   resnet_config:
     act: silu
-    drp: 0.1
-    nrm_groups: 16
+    drp: 0
+    nrm_groups: 8
 
   attn_config:
-    num_heads: 16
-    nrm_groups: 16
+    num_heads: 8
+    nrm_groups: 8
     do_pos_encoding: True
 
   ctxt_embed_config:
+    hddn_dim: 256
+    outp_dim: 256
+    num_blocks: 1
     act_h: silu
     act_o: silu
-    hddn_dim: ${..max_channels}
-    num_blocks: 1
     nrm: layer
 
 # Full configuration for the model optimizer

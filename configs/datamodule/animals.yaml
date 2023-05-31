@@ -12,8 +12,10 @@ train_set:
       - _target_: torchvision.transforms.Resize
         size: ${resize}
         antialias: False
-      - _target_: torchvision.transforms.RandomCrop
+      - _target_: torchvision.transforms.RandomResizedCrop
         size: ${crop_size}
+        scale: [0.4, 1]
+        ratio: [0.9, 1.1]
       - _target_: torchvision.transforms.RandomHorizontalFlip
       - _target_: torchvision.transforms.ConvertImageDtype
         dtype:

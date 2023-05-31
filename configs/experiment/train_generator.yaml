@@ -2,11 +2,12 @@
 
 defaults:
   - override /datamodule: animals.yaml
+  # - override /datamodule: celeba.yaml
 
 datamodule:
   loader_config:
-    batch_size: 256
-    num_workers: 8
+    batch_size: 64
+    num_workers: 4
 
 trainer:
   precision: 16-mixed
@@ -16,14 +17,17 @@ precision: medium
 compile: null
 
 # Required for image loading
-resize: 64
+resize: 100
 crop_size: 64
 
 # Model modifications
 model:
   unet_config:
+    min_size: 4
+    attn_below: 16
     start_channels: 32
-    max_channels: 256
+    max_channels: 128
+    zero_out: False
 
 project_name: image_processing
-network_name: fast_no_crop_generator
+network_name: afhqv2_generator_64_malte_size

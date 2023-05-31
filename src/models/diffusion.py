@@ -213,9 +213,12 @@ class ImageDiffusionGenerator(pl.LightningModule):
             ctxt = self.ctxt_normaliser(ctxt)
 
         # Sample sigmas using the Karras method of a log normal distribution
-        sigmas = T.zeros(size=(data.shape[0], 1), device=self.device)
-        sigmas.add_(self.p_mean + self.p_std * T.randn_like(sigmas))
-        sigmas.exp_().clamp_(self.min_sigma, self.max_sigma)
+        sigmas = T.randn(size=(data.shape[0], 1), device=self.device)
+        sigmas.mul_(self.p_std).add_(self.p_mean).exp_()
+        sigmas.clamp_(self.min_sigma, self.max_sigma)
+
+        # sigmas = T.rand(size=(data.shape[0], 1), device=self.device)
+        # sigmas = sigma_karras_fn(sigmas, self.max_sigma, self.min_sigma)
 
         # Get the c values for the data scaling
         sigmas_with_dim = append_dims(sigmas, data.dim())
@@ -231,6 +234,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
         output = self.get_outputs(c_in * noisy_data, sigmas, ctxt, ctxt_img)
 
         # Calculate the effective training target
+        # ideal_target = ideal_denoise(noisy_data, data, sigmas)
         target = (data - c_skip * noisy_data) / c_out
 
         # Return the denoising loss

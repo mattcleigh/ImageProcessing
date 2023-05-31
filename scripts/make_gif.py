@@ -21,8 +21,8 @@ def images_to_gif(image_fnames, fname):
 
 
 def main():
-    run_path = "mleigh/fashion_image_processing/runs/13udh1ek"
-    file_wilcards = "*images_*_*.png"
+    run_path = "mleigh/image_processing/runs/r25tinez"
+    file_wilcards = "*gen_images*.png"
     image_path = "/home/users/l/leighm/ImageProcessing/"
     prefix = "media/images/"
 

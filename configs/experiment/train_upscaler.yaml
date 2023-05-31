@@ -3,19 +3,25 @@
 defaults:
   - override /datamodule: animals_upscale.yaml
 
+datamodule:
+  loader_config:
+    batch_size: 64
+    num_workers: 4
+
+trainer:
+  precision: 16-mixed
+
+# For faster setup
+precision: medium
+compile: null
+
+# Required for image loading
+resize: 70
+crop_size: 64
+
+# Model modifications
 model:
   use_ctxt_img: True
 
-datamodule:
-  loader_config:
-    batch_size: 32
-
-trainer:
-  check_val_every_n_epoch: 1
-
-resize: 140
-crop_size: 128
-
-# ckpt_path: /srv/beegfs/scratch/groups/rodem/jet_diffusion/checkpoints/pc_jedi/16_bit/checkpoints/last-v1.ckpt
 project_name: image_processing
 network_name: afhqv2_upscaler_16to128
