@@ -4,7 +4,7 @@ _convert_: object
 train_set:
   _target_: src.datamodules.images.ImageUpscaleDataset
   _partial_: True
-  factor: 8
+  factor: ${upscale_factor}
   dataset:
     _target_: torchvision.datasets.ImageFolder
     _partial_: True
@@ -12,17 +12,13 @@ train_set:
     transform:
       _target_: torchvision.transforms.Compose
       transforms:
-        - _target_: torchvision.transforms.PILToTensor
-        - _target_: torchvision.transforms.Resize
-          size: ${resize}
-          antialias: False
-        - _target_: torchvision.transforms.RandomCrop
-          size: ${crop_size}
         - _target_: torchvision.transforms.RandomHorizontalFlip
-        - _target_: torchvision.transforms.ConvertImageDtype
-          dtype:
-            _target_: mattstools.mattstools.torch_utils.dtype_lookup
-            dtype: float
+        - _target_: torchvision.transforms.RandomResizedCrop
+          antialias: True
+          size: ${resize}
+          scale: [0.6, 1]
+          ratio: [0.9, 1.1]
+        - _target_: torchvision.transforms.ToTensor
 
 test_set:
   _target_: ${..train_set._target_}
@@ -35,16 +31,10 @@ test_set:
     transform:
       _target_: torchvision.transforms.Compose
       transforms:
-        - _target_: torchvision.transforms.PILToTensor
         - _target_: torchvision.transforms.Resize
           size: ${resize}
-          antialias: False
-        - _target_: torchvision.transforms.CenterCrop
-          size: ${crop_size}
-        - _target_: torchvision.transforms.ConvertImageDtype
-          dtype:
-            _target_: mattstools.mattstools.torch_utils.dtype_lookup
-            dtype: float
+          antialias: True
+        - _target_: torchvision.transforms.ToTensor
 
 loader_config:
   pin_memory: true

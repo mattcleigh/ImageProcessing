@@ -36,6 +36,6 @@ test_set:
 loader_config:
   pin_memory: true
   batch_size: 32
-  num_workers: 8
+  num_workers: 4
   drop_last: True
   shuffle: True

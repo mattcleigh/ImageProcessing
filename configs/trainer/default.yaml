@@ -1,7 +1,7 @@
 _target_: pytorch_lightning.Trainer
 
 min_epochs: 1
-max_epochs: 3000
+max_epochs: 9999999
 enable_progress_bar: True
 gradient_clip_val: 1
 precision: 32

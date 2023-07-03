@@ -16,12 +16,14 @@ precision: medium
 compile: null
 
 # Required for image loading
-resize: 70
-crop_size: 64
+upscale_factor: 4
+resize: 64
 
 # Model modifications
 model:
   use_ctxt_img: True
+  unet_config:
+    start_channels: 32
 
 project_name: image_processing
-network_name: afhqv2_upscaler_16to128
+network_name: afhqv2_upscaler_16to64

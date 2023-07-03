@@ -8,7 +8,7 @@ import wandb
 from torchvision.utils import make_grid
 
 from mattstools.mattstools.cnns import UNet
-from mattstools.mattstools.k_diffusion import append_dims
+from mattstools.mattstools.k_diffusion import append_dims, ideal_denoise
 from mattstools.mattstools.modules import CosineEncoding, IterativeNormLayer
 from mattstools.mattstools.torch_utils import ema_param_sync, get_loss_fn, get_sched
 
@@ -30,6 +30,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
         sched_config: Mapping,
         use_ctxt: bool = True,
         use_ctxt_img: bool = False,
+        use_ideal_target: bool = False,
         loss_name: str = "mse",
         min_sigma: float = 0,
         max_sigma: float = 80.0,
@@ -60,6 +61,8 @@ class ImageDiffusionGenerator(pl.LightningModule):
             Default is False
         use_ctxt_img: Bool
             If the sample context image is used for generation. Default is False
+        use_ideal_target:
+            If the training regime uses the ideal denoising target
         loss_name : str, optional
             The name of the loss function used to train the neural network.
             Default is "mse".
@@ -101,6 +104,7 @@ class ImageDiffusionGenerator(pl.LightningModule):
         self.p_std = p_std
         self.use_ctxt = use_ctxt
         self.use_ctxt_img = use_ctxt_img
+        self.use_ideal_target = use_ideal_target
 
         # The encoder and scheduler needed for diffusion
         self.sigma_encoder = CosineEncoding(
@@ -234,11 +238,15 @@ class ImageDiffusionGenerator(pl.LightningModule):
         output = self.get_outputs(c_in * noisy_data, sigmas, ctxt, ctxt_img)
 
         # Calculate the effective training target
-        # ideal_target = ideal_denoise(noisy_data, data, sigmas)
-        target = (data - c_skip * noisy_data) / c_out
+        if self.use_ideal_target:
+            target = ideal_denoise(noisy_data, data, sigmas)
+        else:
+            target = data
+
+        scaled_target = (target - c_skip * noisy_data) / c_out
 
         # Return the denoising loss
-        return self.loss_fn(output, target).mean()
+        return self.loss_fn(output, scaled_target).mean()
 
     def training_step(self, sample: tuple, _batch_idx: int) -> T.Tensor:
         loss = self._shared_step(sample)
@@ -251,37 +259,40 @@ class ImageDiffusionGenerator(pl.LightningModule):
         self.log("valid/total_loss", loss)
 
         # Only if there is the logger
-        if wandb.run is not None and batch_idx == 0:
+        if wandb.run is not None:
 
-            # # Unpack the sample tuple
-            # data = sample[0]
-            # ctxt = sample[1]
-            # ctxt_img = sample[2] if len(sample) > 2 else None
+            # Unpack the sample tuple
+            data = sample[0]
+            ctxt = sample[1]
+            ctxt_img = sample[2] if len(sample) > 2 else None
 
-            # # Fully generate a batch
-            # gen_images = self.full_generation(
-            #     initial_noise=T.randn_like(data),
-            #     ctxt=ctxt,
-            #     ctxt_img=ctxt_img,
-            # ).clamp(0, 1)
+            # Fully generate a batch
+            gen_images = self.full_generation(
+                initial_noise=T.randn_like(data),
+                ctxt=ctxt,
+                ctxt_img=ctxt_img,
+            ).clamp(0, 1)
 
-            # # Calculate the FID scores
+            # Calculate the FID scores
             # self.fid.update(gen_images, real=False)
             # self.fid.update(data, real=True)
 
             # Generate only the first few samples
-            ctxt = sample[1][: self.n_visualise]
-            ctxt_img = sample[2][: self.n_visualise] if len(sample) > 2 else None
-            gen_images = self.full_generation(
-                initial_noise=self.initial_noise.to(self.device),
-                ctxt=ctxt,
-                ctxt_img=ctxt_img,
-            )
-            wandb.log({"gen_images": wandb.Image(make_grid(gen_images))}, commit=False)
-            if ctxt_img is not None:
-                wandb.log(
-                    {"ctxt_images": wandb.Image(make_grid(ctxt_img))}, commit=False
+            if batch_idx == 1:
+                ctxt = sample[1][: self.n_visualise]
+                ctxt_img = sample[2][: self.n_visualise] if len(sample) > 2 else None
+                gen_images = self.full_generation(
+                    initial_noise=self.initial_noise.to(self.device),
+                    ctxt=ctxt,
+                    ctxt_img=ctxt_img,
                 )
+                wandb.log(
+                    {"gen_images": wandb.Image(make_grid(gen_images))}, commit=False
+                )
+                if ctxt_img is not None:
+                    wandb.log(
+                        {"ctxt_images": wandb.Image(make_grid(ctxt_img))}, commit=False
+                    )
 
     # def on_validation_epoch_end(self) -> None:
     #     wandb.log({"FID": self.fid.compute()}, commit=False)

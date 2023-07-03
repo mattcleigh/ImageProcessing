@@ -8,41 +8,23 @@ train_set:
   transform:
     _target_: torchvision.transforms.Compose
     transforms:
-      - _target_: torchvision.transforms.PILToTensor
-      - _target_: torchvision.transforms.Resize
-        size: ${resize}
-        antialias: False
-      - _target_: torchvision.transforms.RandomResizedCrop
-        size: ${crop_size}
-        scale: [0.4, 1]
-        ratio: [0.9, 1.1]
       - _target_: torchvision.transforms.RandomHorizontalFlip
-      - _target_: torchvision.transforms.ConvertImageDtype
-        dtype:
-          _target_: mattstools.mattstools.torch_utils.dtype_lookup
-          dtype: float
+      - _target_: torchvision.transforms.RandomResizedCrop
+        antialias: True
+        size: ${resize}
+        scale: [0.6, 1]
+        ratio: [0.9, 1.1]
+      - _target_: torchvision.transforms.ToTensor
 
 test_set:
   _target_: torchvision.datasets.ImageFolder
   _partial_: True
   root: ${paths.data_dir}/afhq_v2/test
-  transform:
-    _target_: torchvision.transforms.Compose
-    transforms:
-      - _target_: torchvision.transforms.PILToTensor
-      - _target_: torchvision.transforms.Resize
-        size: ${resize}
-        antialias: False
-      - _target_: torchvision.transforms.CenterCrop
-        size: ${crop_size}
-      - _target_: torchvision.transforms.ConvertImageDtype
-        dtype:
-          _target_: mattstools.mattstools.torch_utils.dtype_lookup
-          dtype: float
+  transform: ${..train_set.transform}
 
 loader_config:
   pin_memory: true
-  batch_size: 32
+  batch_size: 64
   num_workers: 8
   drop_last: True
   shuffle: True

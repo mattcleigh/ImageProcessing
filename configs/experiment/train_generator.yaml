@@ -2,7 +2,6 @@
 
 defaults:
   - override /datamodule: animals.yaml
-  # - override /datamodule: celeba.yaml
 
 datamodule:
   loader_config:
@@ -17,17 +16,32 @@ precision: medium
 compile: null
 
 # Required for image loading
-resize: 100
-crop_size: 64
+resize: 64
 
 # Model modifications
 model:
   unet_config:
-    min_size: 4
-    attn_below: 16
     start_channels: 32
-    max_channels: 128
-    zero_out: False
+
+  optimizer:
+    _target_: mattstools.mattstools.optimisers.Lookahead
+    _partial_: true
+    k: 10
+    alpha: 0.1
+    inner_optimizer:
+      _target_: torch.optim.AdamW
+      _partial_: true
+      lr: 1.0e-4
+      weight_decay: 0
+
+  sched_config:
+    mattstools:
+      name: warmup
+      num_steps: 1_00_000
+    lightning:
+      monitor: valid/total_loss
+      interval: step
+      frequency: 1
 
 project_name: image_processing
-network_name: afhqv2_generator_64_malte_size
+network_name: antialiased_cat_lookahead

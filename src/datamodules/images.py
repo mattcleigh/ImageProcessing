@@ -2,9 +2,10 @@ from copy import deepcopy
 from functools import partial
 from typing import Mapping
 
-import torch.nn as nn
+import numpy as np
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset
+from torchvision.transforms.functional import resize
 
 
 class ImageUpscaleDataset(Dataset):
@@ -13,16 +14,17 @@ class ImageUpscaleDataset(Dataset):
     def __init__(self, dataset: partial, factor: int = 2) -> None:
         super().__init__()
         self.dataset = dataset()
-        self.downscaler = nn.AvgPool2d(factor, factor)
-        self.upscaler = nn.Upsample(scale_factor=factor)
+        self.factor = factor
 
     def __len__(self) -> int:
         return len(self.dataset)
 
     def __getitem__(self, idx: int) -> tuple:
         image, ctxt = self.dataset[idx]
-        self.downscaler(image).shape
-        low_res = (self.upscaler(self.downscaler(image).unsqueeze(0))).squeeze()
+        orig_size = np.array(image.shape[1:])
+        low_size = orig_size // self.factor
+        low_res = resize(image, size=low_size, antialias=True)
+        low_res = resize(low_res, size=orig_size, antialias=True)
         return image, ctxt, low_res
 
 
